@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?pde version="3.8"?>
+<target name="org.eclipse.oct.target" sequenceNumber="1">
+    <locations>
+        <!-- Eclipse 2025-03 release repository -->
+        <location includeAllPlatforms="false" includeConfigurePhase="true"
+                  includeMode="planner" includeSource="true" type="InstallableUnit">
+            <unit id="org.eclipse.platform.feature.group" version="0.0.0"/>
+            <unit id="org.eclipse.rcp.feature.group" version="0.0.0"/>
+            <unit id="org.eclipse.jdt.feature.group" version="0.0.0"/>
+            <unit id="org.eclipse.equinox.p2.sdk.feature.group" version="0.0.0"/>
+            <unit id="org.eclipse.core.filesystem" version="0.0.0"/>
+            <unit id="org.eclipse.core.resources" version="0.0.0"/>
+            <unit id="org.eclipse.jface.text" version="0.0.0"/>
+            <unit id="org.eclipse.ui.workbench.texteditor" version="0.0.0"/>
+            <unit id="org.eclipse.ui.ide" version="0.0.0"/>
+            <unit id="org.eclipse.equinox.security" version="0.0.0"/>
+            <repository location="https://download.eclipse.org/releases/2025-03/"/>
+        </location>
+
+        <!-- LSP4J jsonrpc from Eclipse Orbit -->
+        <location includeAllPlatforms="false" includeConfigurePhase="false"
+                  includeMode="planner" includeSource="false" type="InstallableUnit">
+            <unit id="org.eclipse.lsp4j.jsonrpc" version="0.0.0"/>
+            <repository location="https://download.eclipse.org/tools/orbit/simrel/orbit-aggregation/2025-03/"/>
+        </location>
+
+        <!-- Gson (bundled in Eclipse platform) -->
+        <location includeAllPlatforms="false" includeConfigurePhase="false"
+                  includeMode="planner" includeSource="false" type="InstallableUnit">
+            <unit id="com.google.gson" version="0.0.0"/>
+            <repository location="https://download.eclipse.org/releases/2025-03/"/>
+        </location>
+    </locations>
+    <environment>
+        <os>linux</os>
+        <ws>gtk</ws>
+        <arch>x86_64</arch>
+    </environment>
+    <launcherArgs>
+        <programArgs>-console -consolelog</programArgs>
+        <vmArgs>-Xms512m -Xmx1024m</vmArgs>
+    </launcherArgs>
+    <jreContainer>org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-21</jreContainer>
+</target>

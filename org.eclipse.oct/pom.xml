@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.eclipse.oct</groupId>
+        <artifactId>org.eclipse.oct.parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>org.eclipse.oct</artifactId>
+    <packaging>eclipse-plugin</packaging>
+
+    <name>Eclipse OCT Plugin</name>
+
+    <build>
+        <plugins>
+            <!-- Download and stage third-party jars into lib/ -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.basedir}/lib</outputDirectory>
+                            <stripVersion>false</stripVersion>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.eclipse.lsp4j</groupId>
+                                    <artifactId>org.eclipse.lsp4j.jsonrpc</artifactId>
+                                    <version>0.21.1</version>
+                                    <destFileName>lsp4j.jsonrpc.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>com.fasterxml.jackson.core</groupId>
+                                    <artifactId>jackson-databind</artifactId>
+                                    <version>2.15.2</version>
+                                    <destFileName>jackson-databind.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>com.fasterxml.jackson.core</groupId>
+                                    <artifactId>jackson-core</artifactId>
+                                    <version>2.15.2</version>
+                                    <destFileName>jackson-core.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>com.fasterxml.jackson.core</groupId>
+                                    <artifactId>jackson-annotations</artifactId>
+                                    <version>2.15.2</version>
+                                    <destFileName>jackson-annotations.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>org.msgpack</groupId>
+                                    <artifactId>jackson-dataformat-msgpack</artifactId>
+                                    <version>0.9.6</version>
+                                    <destFileName>jackson-dataformat-msgpack.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>org.msgpack</groupId>
+                                    <artifactId>msgpack-core</artifactId>
+                                    <version>0.9.6</version>
+                                    <destFileName>msgpack-core.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Stage oct-service-process executables into bin/ before packaging.
+                 Set -Doct.project.path=/path/to/open-collaboration-tools to enable.
+                 The npm build produces binaries via "npm run create:executable". -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>stage-executables</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <echo message="Staging oct-service-process binaries (oct.project.path=${oct.project.path})"/>
+                                <copy todir="${project.basedir}/bin" failonerror="false" quiet="true">
+                                    <fileset dir="${oct.project.path}/packages/open-collaboration-service-process/bin"
+                                             includes="**/*" erroronmissingdir="false"/>
+                                </copy>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <!-- These are used for compile only; runtime jars come from lib/ in bundle classpath -->
+        <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j.jsonrpc</artifactId>
+            <version>0.21.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.2</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.msgpack</groupId>
+            <artifactId>jackson-dataformat-msgpack</artifactId>
+            <version>0.9.6</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

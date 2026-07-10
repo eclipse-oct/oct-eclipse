@@ -1,0 +1,72 @@
+/*
+ * Copyright (c) 2026 TypeFox GmbH and others.
+ * SPDX-License-Identifier: EPL-2.0
+ */
+package org.eclipse.oct.internal.rpc;
+
+import java.io.IOException;
+import java.util.Base64;
+
+import org.eclipse.oct.internal.protocol.FileContent;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.TypeAdapter;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.JsonWriter;
+import org.msgpack.jackson.dataformat.MessagePackFactory;
+
+/**
+ * Gson TypeAdapter that wraps binary payloads as:
+ * {"type":"binaryData","data":"<base64(msgpack(value))>"}
+ *
+ * Port of BinaryDataAdapter.kt.
+ */
+public class BinaryDataAdapter<T> extends TypeAdapter<T> {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper(new MessagePackFactory());
+
+    private final Class<T> type;
+
+    public BinaryDataAdapter(Class<T> type) {
+        this.type = type;
+    }
+
+    @Override
+    public void write(JsonWriter out, T value) throws IOException {
+        byte[] msgpackBytes = OBJECT_MAPPER.writeValueAsBytes(value);
+        String base64 = Base64.getEncoder().encodeToString(msgpackBytes);
+
+        out.beginObject();
+        out.name("type").value("binaryData");
+        out.name("data").value(base64);
+        out.endObject();
+    }
+
+    @Override
+    public T read(JsonReader in) throws IOException {
+        String data = null;
+        in.beginObject();
+        while (in.hasNext()) {
+            String fieldName = in.nextName();
+            if ("data".equals(fieldName)) {
+                data = in.nextString();
+            } else {
+                in.skipValue();
+            }
+        }
+        in.endObject();
+
+        if (data == null) {
+            throw new IOException("BinaryData missing 'data' field");
+        }
+
+        byte[] decoded = Base64.getDecoder().decode(data);
+        return OBJECT_MAPPER.readValue(decoded, type);
+    }
+
+    /** Register adapters for all binary-encoded protocol types. */
+    public static void registerAll(com.google.gson.GsonBuilder builder) {
+        builder.registerTypeAdapter(FileContent.class, new BinaryDataAdapter<>(FileContent.class));
+    }
+}
