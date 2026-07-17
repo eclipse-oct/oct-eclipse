@@ -4,28 +4,23 @@
  */
 package org.eclipse.oct.internal.rpc;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.StringBufferInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
-import org.eclipse.lsp4j.jsonrpc.messages.Message;
 import org.eclipse.oct.internal.auth.AuthenticationService;
 
 /**
  * Manages the oct-service-process executable lifecycle and the JSON-RPC
- * launcher. Port of OCTServiceProcess.kt.
+ * launcher.
  */
 public class ServiceProcess implements AutoCloseable {
 
@@ -82,7 +77,7 @@ public class ServiceProcess implements AutoCloseable {
 					if (err.length > 0 || currentProcess.exitValue() != 0) {
 						var message = "OCT service process exited with code (" + currentProcess.exitValue() + ")";
 						LOG.log(Level.SEVERE, message + ":\n" + new String(err));
-						throw new RuntimeException(tokenArg);
+						throw new RuntimeException(message);
 					}
 				} catch (IOException ignored) {
 				}

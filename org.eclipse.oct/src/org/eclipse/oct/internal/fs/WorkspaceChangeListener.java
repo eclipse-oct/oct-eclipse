@@ -26,7 +26,7 @@ import org.eclipse.oct.internal.rpc.FileSystemService;
 
 /**
  * Listens for local workspace changes and broadcasts them to guests.
- * Port of OCTFileListener.kt.
+ * 
  */
 public class WorkspaceChangeListener implements IResourceChangeListener {
 

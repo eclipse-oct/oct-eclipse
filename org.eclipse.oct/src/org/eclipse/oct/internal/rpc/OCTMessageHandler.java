@@ -13,20 +13,18 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.oct.internal.CollaborationInstance;
 import org.eclipse.oct.internal.auth.AuthenticationService;
 import org.eclipse.oct.internal.protocol.AuthMetadata;
+import org.eclipse.oct.internal.protocol.ClientTextSelection;
 import org.eclipse.oct.internal.protocol.InitData;
 import org.eclipse.oct.internal.protocol.Peer;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.User;
-import org.eclipse.oct.internal.protocol.Workspace;
-import org.eclipse.oct.internal.protocol.ClientTextSelection;
 import org.eclipse.oct.internal.protocol.TextDocumentInsert;
+import org.eclipse.oct.internal.protocol.User;
 import org.eclipse.oct.internal.util.EventEmitter;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.PlatformUI;
 
 /**
  * Handles inbound OCT messages from the service process.
- * Port of OCTMessageHandler.kt.
+ * 
  */
 public class OCTMessageHandler extends BaseMessageHandler {
 

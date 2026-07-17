@@ -17,7 +17,6 @@ import org.eclipse.swt.graphics.RGB;
 
 /**
  * Fills the selection range with a semi-transparent peer color.
- * Port of the range highlighter in CursorRenderer.kt (alpha ~50).
  */
 public class PeerSelectionDrawingStrategy implements IDrawingStrategy {
 

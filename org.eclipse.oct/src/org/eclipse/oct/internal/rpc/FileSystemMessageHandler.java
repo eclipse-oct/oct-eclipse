@@ -21,7 +21,7 @@ import org.eclipse.oct.internal.util.EventEmitter;
 
 /**
  * Handles inbound file system RPC calls from the service process.
- * Port of FileSystemMessageHandler.kt.
+ * 
  */
 @JsonSegment("fileSystem")
 public class FileSystemMessageHandler extends BaseMessageHandler {

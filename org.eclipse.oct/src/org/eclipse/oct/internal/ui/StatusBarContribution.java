@@ -17,7 +17,7 @@ import org.eclipse.ui.menus.WorkbenchWindowControlContribution;
 
 /**
  * Status bar contribution showing the current OCT session state.
- * Port of StatusBarSessionWidget.kt.
+ * 
  */
 public class StatusBarContribution extends WorkbenchWindowControlContribution {
 

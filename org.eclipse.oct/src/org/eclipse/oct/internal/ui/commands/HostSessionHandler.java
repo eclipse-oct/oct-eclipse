@@ -21,7 +21,6 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
  * Command handler for hosting an OCT collaboration session.
- * Port of HostAction in Actions.kt.
  */
 public class HostSessionHandler extends AbstractHandler {
 

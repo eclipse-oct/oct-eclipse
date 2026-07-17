@@ -31,7 +31,7 @@ import org.eclipse.oct.internal.protocol.FileSystemStat;
 import org.eclipse.oct.internal.protocol.FileType;
 
 /**
- * Host-side workspace file system service. Port of WorkspaceFileSystemService.kt.
+ * Host-side workspace file system service. 
  * Provides file operations over the Eclipse workspace API.
  */
 public class WorkspaceFileSystemService implements WorkspaceFileSystemServiceHolder {

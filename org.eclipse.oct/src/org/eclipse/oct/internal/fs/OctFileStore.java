@@ -37,7 +37,6 @@ import org.eclipse.oct.internal.rpc.OCTService;
 /**
  * EFS FileStore for the "oct://" guest file system.
  * Every operation is a synchronous JSON-RPC round trip to the host.
- * Port of OCTSessionVirtualFile.kt + OCTSessionFileSystem.kt.
  */
 public class OctFileStore extends FileStore {
 

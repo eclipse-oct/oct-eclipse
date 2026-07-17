@@ -13,7 +13,7 @@ import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.osgi.service.prefs.BackingStoreException;
 
 /**
- * Settings facade backed by IEclipsePreferences. Port of OCTSettings.kt.
+ * Settings facade backed by IEclipsePreferences. 
  */
 public class OCTSettings {
 

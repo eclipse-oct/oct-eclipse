@@ -25,7 +25,7 @@ import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 
 /**
  * Handles authentication flows and token storage.
- * Port of AuthenticationService.kt.
+ * 
  */
 public class AuthenticationService {
 

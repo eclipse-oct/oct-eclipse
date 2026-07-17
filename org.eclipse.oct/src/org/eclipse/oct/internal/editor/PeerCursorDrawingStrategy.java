@@ -17,7 +17,6 @@ import org.eclipse.swt.graphics.RGB;
 
 /**
  * Draws a 2px vertical caret bar at the peer's cursor position.
- * Port of PeerCaretHighlighterRenderer from CursorRenderer.kt.
  */
 public class PeerCursorDrawingStrategy implements IDrawingStrategy {
 

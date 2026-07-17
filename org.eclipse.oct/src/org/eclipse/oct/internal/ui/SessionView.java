@@ -24,7 +24,7 @@ import org.eclipse.ui.part.ViewPart;
 
 /**
  * Session view showing peers and follow controls.
- * Port of SessionViewFactory.kt.
+ * 
  */
 public class SessionView extends ViewPart {
 

@@ -29,7 +29,7 @@ import org.eclipse.swt.widgets.Text;
  * JFace dialog for form-based authentication.
  * Renders one labeled input field per {@link FormAuthProviderField} and
  * POSTs the collected data (plus the session token) as JSON to the provider
- * endpoint. Port of {@code handleFormAuth} in AuthenticationService.kt.
+ * endpoint.
  */
 public class FormAuthDialog extends TitleAreaDialog {
 

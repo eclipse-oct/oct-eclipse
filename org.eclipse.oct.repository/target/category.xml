@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature url="features/org.eclipse.oct.feature_1.0.0.qualifier.jar"
+            id="org.eclipse.oct.feature"
+            version="1.0.0.qualifier">
+      <category name="org.eclipse.oct.category"/>
+   </feature>
+   <category-def name="org.eclipse.oct.category" label="Open Collaboration Tools">
+      <description>
+         Eclipse plugin for Open Collaboration Tools real-time collaborative editing.
+      </description>
+   </category-def>
+</site>

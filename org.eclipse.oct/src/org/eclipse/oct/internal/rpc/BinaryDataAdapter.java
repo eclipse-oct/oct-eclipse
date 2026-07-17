@@ -8,19 +8,18 @@ import java.io.IOException;
 import java.util.Base64;
 
 import org.eclipse.oct.internal.protocol.FileContent;
+import org.msgpack.jackson.dataformat.MessagePackFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
-import org.msgpack.jackson.dataformat.MessagePackFactory;
 
 /**
  * Gson TypeAdapter that wraps binary payloads as:
  * {"type":"binaryData","data":"<base64(msgpack(value))>"}
  *
- * Port of BinaryDataAdapter.kt.
+ * 
  */
 public class BinaryDataAdapter<T> extends TypeAdapter<T> {
 

@@ -44,7 +44,6 @@ import org.eclipse.ui.texteditor.ITextEditor;
 /**
  * Full M4 EditorManager: tracks open editors, syncs documents and selections,
  * renders peer cursors/selections via AnnotationPainter, supports follow-mode.
- * Port of EditorManager.kt + EditorListeners.kt + CursorRenderer.kt.
  */
 public class EditorManager implements IPartListener2 {
 

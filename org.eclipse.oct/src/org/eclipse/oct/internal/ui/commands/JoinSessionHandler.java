@@ -15,7 +15,6 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
  * Command handler for joining an OCT collaboration session.
- * Port of JoinAction in Actions.kt.
  */
 public class JoinSessionHandler extends AbstractHandler {
 

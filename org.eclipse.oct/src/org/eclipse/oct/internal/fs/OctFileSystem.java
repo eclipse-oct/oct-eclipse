@@ -12,7 +12,7 @@ import org.eclipse.core.filesystem.provider.FileSystem;
 
 /**
  * EFS guest file system for the "oct" scheme.
- * Port of OCTSessionFileSystem.kt.
+ * 
  *
  * URI shape: oct://<sessionId>/<sharedRoot>/<relative/path>
  * The authority is the session room ID; path[0] is the shared root name.

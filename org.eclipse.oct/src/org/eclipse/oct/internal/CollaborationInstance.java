@@ -26,7 +26,7 @@ import org.eclipse.oct.internal.rpc.OCTService;
 import org.eclipse.oct.internal.util.EventEmitter;
 
 /**
- * Per-session state holder. Port of CollaborationInstance.kt.
+ * Per-session state holder. 
  */
 public class CollaborationInstance {
 
@@ -131,6 +131,7 @@ public class CollaborationInstance {
         String sessionId = sessionData.roomId;
         if (sessionData.workspace == null || sessionData.workspace.folders == null) return;
 
+        // FIXME use Jobs monitor
         NullProgressMonitor monitor = new NullProgressMonitor();
         for (String root : sessionData.workspace.folders) {
             try {

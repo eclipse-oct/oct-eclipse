@@ -10,7 +10,7 @@ import java.util.Map;
 import org.eclipse.swt.graphics.RGB;
 
 /**
- * Assigns a distinct color to each peer. Port of PeerColorService.kt.
+ * Assigns a distinct color to each peer. 
  */
 public class PeerColors {
 

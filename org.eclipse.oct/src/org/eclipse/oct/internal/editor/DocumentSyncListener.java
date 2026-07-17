@@ -15,7 +15,6 @@ import org.eclipse.oct.internal.rpc.OCTService;
 
 /**
  * Listens for local document changes and emits TextDocumentInsert RPC calls.
- * Port of EditorDocumentListener in EditorListeners.kt.
  *
  * The sendUpdates flag prevents echo when applying remote edits.
  */

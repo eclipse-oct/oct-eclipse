@@ -15,19 +15,16 @@
             <unit id="org.eclipse.ui.workbench.texteditor" version="0.0.0"/>
             <unit id="org.eclipse.ui.ide" version="0.0.0"/>
             <unit id="org.eclipse.equinox.security" version="0.0.0"/>
+            <unit id="org.eclipse.lsp4j.jsonrpc" version="0.0.0"/>
             <repository location="https://download.eclipse.org/releases/2025-03/"/>
         </location>
 
-        <!-- LSP4J jsonrpc from Eclipse Orbit -->
         <location includeAllPlatforms="false" includeConfigurePhase="false"
-                  includeMode="planner" includeSource="false" type="InstallableUnit">
-            <unit id="org.eclipse.lsp4j.jsonrpc" version="0.0.0"/>
-            <repository location="https://download.eclipse.org/tools/orbit/simrel/orbit-aggregation/2025-03/"/>
-        </location>
-
-        <!-- Gson (bundled in Eclipse platform) -->
-        <location includeAllPlatforms="false" includeConfigurePhase="false"
-                  includeMode="planner" includeSource="false" type="InstallableUnit">
+                  includeMode="planner" includeSource="true" type="InstallableUnit">
+            <unit id="com.google.gson" version="0.0.0"/>
+            <unit id="com.fasterxml.jackson.core.jackson-core" version="0.0.0"/>
+            <unit id="com.fasterxml.jackson.core.jackson-databind" version="0.0.0"/>
+            <unit id="com.fasterxml.jackson.core.jackson-annotations" version="0.0.0"/>
             <unit id="com.google.gson" version="0.0.0"/>
             <repository location="https://download.eclipse.org/releases/2025-03/"/>
         </location>

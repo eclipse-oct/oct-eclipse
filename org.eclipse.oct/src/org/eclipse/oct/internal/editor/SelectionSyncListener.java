@@ -15,7 +15,6 @@ import org.eclipse.oct.internal.rpc.OCTService;
 
 /**
  * Listens for caret / selection changes and emits updateTextSelection RPC calls.
- * Port of the caret/selection part of EditorListeners.kt.
  */
 public class SelectionSyncListener implements ISelectionChangedListener {
 

@@ -19,7 +19,6 @@ import org.eclipse.swt.widgets.Shell;
 
 /**
  * An SWT Browser dialog used as a fallback/embedded login flow.
- * Port of AuthDialog from AuthenticationService.kt (IntelliJ).
  */
 public class LoginBrowserDialog extends Dialog {
 
