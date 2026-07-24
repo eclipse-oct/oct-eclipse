@@ -8,10 +8,11 @@ package org.eclipse.oct.internal.protocol;
  * Session data returned after creating or joining a room.
  */
 public class SessionData {
-    public String roomId;
-    public String roomToken;
-    public String authToken;
-    public Workspace workspace;
+	public String roomId;
+	public String roomToken;
+	public String authToken;
+	public Workspace workspace;
 
-    public SessionData() {}
+	public SessionData() {
+	}
 }

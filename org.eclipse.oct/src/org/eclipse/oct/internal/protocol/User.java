@@ -8,9 +8,10 @@ package org.eclipse.oct.internal.protocol;
  * User info sent in join session requests.
  */
 public class User {
-    public String name;
-    public String email;
-    public String authProvider;
+	public String name;
+	public String email;
+	public String authProvider;
 
-    public User() {}
+	public User() {
+	}
 }

@@ -14,32 +14,32 @@ import org.eclipse.oct.internal.protocol.SessionData;
 import org.eclipse.oct.internal.protocol.Workspace;
 
 /**
- * Remote interface for the OCT service process.
- * Matches the protocol methods in messages.ts (ToServiceMessages).
+ * Remote interface for the OCT service process. Matches the protocol methods in
+ * messages.ts (ToServiceMessages).
  */
 public interface OCTService extends BaseMessageHandler.BaseRemoteInterface {
 
-    @JsonRequest
-    CompletableFuture<String> login();
+	@JsonRequest
+	CompletableFuture<String> login();
 
-    @JsonRequest(value = "room/joinRoom")
-    CompletableFuture<SessionData> joinRoom(String roomId);
+	@JsonRequest(value = "room/joinRoom")
+	CompletableFuture<SessionData> joinRoom(String roomId);
 
-    @JsonRequest(value = "room/createRoom")
-    CompletableFuture<SessionData> createRoom(Workspace workspace);
+	@JsonRequest(value = "room/createRoom")
+	CompletableFuture<SessionData> createRoom(Workspace workspace);
 
-    @JsonRequest(value = "room/closeSession")
-    CompletableFuture<Void> closeSession();
+	@JsonRequest(value = "room/closeSession")
+	CompletableFuture<Void> closeSession();
 
-    @JsonNotification(value = "awareness/openDocument")
-    void openDocument(String type, String documentUri, String text);
+	@JsonNotification(value = "awareness/openDocument")
+	void openDocument(String type, String documentUri, String text);
 
-    @JsonRequest(value = "awareness/getDocumentContent")
-    CompletableFuture<FileContent> getDocumentContent(String path);
+	@JsonRequest(value = "awareness/getDocumentContent")
+	CompletableFuture<FileContent> getDocumentContent(String path);
 
-    @JsonNotification(value = "awareness/updateTextSelection")
-    void updateTextSelection(String path, ClientTextSelection[] textSelections);
+	@JsonNotification(value = "awareness/updateTextSelection")
+	void updateTextSelection(String path, ClientTextSelection[] textSelections);
 
-    @JsonNotification(value = "awareness/updateDocument")
-    void updateDocument(String path, org.eclipse.oct.internal.protocol.TextDocumentInsert[] updates);
+	@JsonNotification(value = "awareness/updateDocument")
+	void updateDocument(String path, org.eclipse.oct.internal.protocol.TextDocumentInsert[] updates);
 }

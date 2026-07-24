@@ -16,33 +16,33 @@ import org.eclipse.oct.internal.protocol.FileSystemStat;
 import org.eclipse.oct.internal.protocol.FileType;
 
 /**
- * Remote interface for the file system service.
- * Matches fileSystem/* methods in messages.ts.
+ * Remote interface for the file system service. Matches fileSystem/* methods in
+ * messages.ts.
  */
 @JsonSegment("fileSystem")
 public interface FileSystemService extends BaseMessageHandler.BaseRemoteInterface {
 
-    @JsonRequest
-    CompletableFuture<FileSystemStat> stat(String path, String target);
+	@JsonRequest
+	CompletableFuture<FileSystemStat> stat(String path, String target);
 
-    @JsonRequest
-    CompletableFuture<FileContent> readFile(String path, String target);
+	@JsonRequest
+	CompletableFuture<FileContent> readFile(String path, String target);
 
-    @JsonRequest
-    CompletableFuture<Map<String, FileType>> readDir(String path, String target);
+	@JsonRequest
+	CompletableFuture<Map<String, FileType>> readDir(String path, String target);
 
-    @JsonRequest
-    CompletableFuture<Void> mkdir(String path, String target);
+	@JsonRequest
+	CompletableFuture<Void> mkdir(String path, String target);
 
-    @JsonRequest
-    CompletableFuture<Void> writeFile(String path, FileContent content, String target);
+	@JsonRequest
+	CompletableFuture<Void> writeFile(String path, FileContent content, String target);
 
-    @JsonRequest
-    CompletableFuture<Void> delete(String path, String target);
+	@JsonRequest
+	CompletableFuture<Void> delete(String path, String target);
 
-    @JsonRequest
-    CompletableFuture<Void> rename(String oldPath, String newPath, String target);
+	@JsonRequest
+	CompletableFuture<Void> rename(String oldPath, String newPath, String target);
 
-    @JsonNotification
-    void change(FileChangeEvent event, String broadcast);
+	@JsonNotification
+	void change(FileChangeEvent event, String broadcast);
 }

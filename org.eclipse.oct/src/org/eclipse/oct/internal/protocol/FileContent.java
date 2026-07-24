@@ -5,14 +5,16 @@
 package org.eclipse.oct.internal.protocol;
 
 /**
- * Binary file content. Serialized/deserialized via BinaryDataAdapter (msgpack + base64).
+ * Binary file content. Serialized/deserialized via BinaryDataAdapter (msgpack +
+ * base64).
  */
 public class FileContent {
-    public byte[] content;
+	public byte[] content;
 
-    public FileContent() {}
+	public FileContent() {
+	}
 
-    public FileContent(byte[] content) {
-        this.content = content;
-    }
+	public FileContent(byte[] content) {
+		this.content = content;
+	}
 }

@@ -14,14 +14,14 @@ import org.eclipse.oct.internal.auth.AuthenticationService;
  */
 public class LogoutHandler extends AbstractHandler {
 
-    @Override
-    public Object execute(ExecutionEvent event) throws ExecutionException {
-        AuthenticationService.getInstance().logout();
-        return null;
-    }
+	@Override
+	public Object execute(ExecutionEvent event) throws ExecutionException {
+		AuthenticationService.getInstance().logout();
+		return null;
+	}
 
-    @Override
-    public boolean isEnabled() {
-        return !org.eclipse.oct.internal.prefs.OCTSettings.getInstance().getStoredUserTokens().isEmpty();
-    }
+	@Override
+	public boolean isEnabled() {
+		return !org.eclipse.oct.internal.prefs.OCTSettings.getInstance().getStoredUserTokens().isEmpty();
+	}
 }

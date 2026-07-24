@@ -18,27 +18,23 @@ import org.eclipse.ui.handlers.HandlerUtil;
  */
 public class JoinSessionHandler extends AbstractHandler {
 
-    @Override
-    public Object execute(ExecutionEvent event) throws ExecutionException {
-        IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
+	@Override
+	public Object execute(ExecutionEvent event) throws ExecutionException {
+		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
 
-        InputDialog dialog = new InputDialog(
-            window.getShell(),
-            "Join Collaboration Session",
-            "Enter the room ID or URL:",
-            "",
-            input -> (input == null || input.isBlank()) ? "Room ID cannot be empty" : null
-        );
+		InputDialog dialog = new InputDialog(window.getShell(), "Join Collaboration Session",
+				"Enter the room ID or URL:", "",
+				input -> (input == null || input.isBlank()) ? "Room ID cannot be empty" : null);
 
-        if (dialog.open() == Window.OK) {
-            String roomToken = dialog.getValue().trim();
-            SessionService.getInstance().joinRoom(roomToken);
-        }
-        return null;
-    }
+		if (dialog.open() == Window.OK) {
+			String roomToken = dialog.getValue().trim();
+			SessionService.getInstance().joinRoom(roomToken);
+		}
+		return null;
+	}
 
-    @Override
-    public boolean isEnabled() {
-        return SessionService.getInstance() != null;
-    }
+	@Override
+	public boolean isEnabled() {
+		return SessionService.getInstance() != null;
+	}
 }

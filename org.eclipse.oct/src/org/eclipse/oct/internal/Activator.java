@@ -13,74 +13,91 @@ import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.oct.internal.auth.AuthenticationService;
 import org.eclipse.oct.internal.fs.WorkspaceChangeListener;
-import org.osgi.framework.BundleActivator;
+import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
 /**
- * Main OSGi bundle activator.
- * Initialises the SessionService, AuthenticationService, and resource listeners.
+ * Main OSGi bundle activator. Initialises the SessionService,
+ * AuthenticationService, and resource listeners.
  *
  * @author Dennis Hübner - Initial contribution and API.
  */
-public class Activator implements BundleActivator {
+public class Activator extends AbstractUIPlugin {
 
-    public static final String PLUGIN_ID = "org.eclipse.oct";
+	public static final String PLUGIN_ID = "org.eclipse.oct";
 
-    private static Activator instance;
+	public static final String ICON_STATUS_DISCONNECT = PLUGIN_ID + ".icons.disconnected";
+	public static final String ICON_STATUS_SHARE = PLUGIN_ID + ".icons.share";
+	public static final String ICON_STATUS_COLLAB = PLUGIN_ID + ".icons.collab";
 
-    private SessionService sessionService;
-    private WorkspaceChangeListener workspaceChangeListener;
+	private static Activator instance;
 
-    public static Activator getInstance() {
-        return instance;
-    }
+	private SessionService sessionService;
+	private WorkspaceChangeListener workspaceChangeListener;
 
-    @Override
-    public void start(BundleContext context) throws Exception {
-        instance = this;
+	public static Activator getInstance() {
+		return instance;
+	}
 
-        // Bootstrap singletons
-        AuthenticationService.getInstance();
+	@Override
+	public void start(BundleContext context) throws Exception {
+		instance = this;
 
-        sessionService = new SessionService();
-        SessionService.setInstance(sessionService);
+		registerIcons();
+		// Bootstrap singletons
+		AuthenticationService.getInstance();
 
-        // Register workspace change listener for broadcasting file changes to guests
-        workspaceChangeListener = new WorkspaceChangeListener(sessionService);
-        ResourcesPlugin.getWorkspace().addResourceChangeListener(
-            workspaceChangeListener, IResourceChangeEvent.POST_CHANGE);
+		sessionService = new SessionService();
+		SessionService.setInstance(sessionService);
 
-        // Register project lifecycle listener (close/delete → close session)
-        ResourcesPlugin.getWorkspace().addResourceChangeListener(event -> {
-            if (event.getType() == IResourceChangeEvent.PRE_CLOSE
-                    || event.getType() == IResourceChangeEvent.PRE_DELETE) {
-                if (event.getResource() != null
-                        && event.getResource() instanceof org.eclipse.core.resources.IProject project) {
-                    if (sessionService.hasOpenSession(project)) {
-                        sessionService.closeCurrentSession(project);
-                    }
-                    sessionService.projectClosed(project);
-                }
-            }
-        }, IResourceChangeEvent.PRE_CLOSE | IResourceChangeEvent.PRE_DELETE);
-    }
+		// Register workspace change listener for broadcasting file changes to guests
+		workspaceChangeListener = new WorkspaceChangeListener(sessionService);
+		ResourcesPlugin.getWorkspace().addResourceChangeListener(workspaceChangeListener,
+				IResourceChangeEvent.POST_CHANGE);
 
-    @Override
-    public void stop(BundleContext context) throws Exception {
-        if (workspaceChangeListener != null) {
-            ResourcesPlugin.getWorkspace().removeResourceChangeListener(workspaceChangeListener);
-        }
+		// Register project lifecycle listener (close/delete → close session)
+		ResourcesPlugin.getWorkspace().addResourceChangeListener(event ->
 
-        // Close all open sessions
-        if (sessionService != null) {
-            for (org.eclipse.core.resources.IProject project : sessionService.getAllInstances().keySet()) {
-                try {
-                    sessionService.closeCurrentSession(project);
-                } catch (Exception ignored) {}
-            }
-        }
+		{
+			if (event.getType() == IResourceChangeEvent.PRE_CLOSE
+					|| event.getType() == IResourceChangeEvent.PRE_DELETE) {
+				if (event.getResource() != null
+						&& event.getResource() instanceof org.eclipse.core.resources.IProject project) {
+					if (sessionService.hasOpenSession(project)) {
+						sessionService.closeCurrentSession(project);
+					}
+					sessionService.projectClosed(project);
+				}
+			}
+		}, IResourceChangeEvent.PRE_CLOSE | IResourceChangeEvent.PRE_DELETE);
+	}
 
-        SessionService.setInstance(null);
-        instance = null;
-    }
+	private void registerIcons() {
+		getImageRegistry().put(ICON_STATUS_DISCONNECT,
+				imageDescriptorFromPlugin(getBundle().getSymbolicName(), "icons/no_share.png"));
+		getImageRegistry().put(ICON_STATUS_SHARE,
+				imageDescriptorFromPlugin(getBundle().getSymbolicName(), "icons/share.png"));
+		getImageRegistry().put(ICON_STATUS_COLLAB,
+				imageDescriptorFromPlugin(getBundle().getSymbolicName(), "icons/collab.png"));
+	}
+
+	@Override
+	public void stop(BundleContext context) throws Exception {
+		if (workspaceChangeListener != null) {
+			ResourcesPlugin.getWorkspace().removeResourceChangeListener(workspaceChangeListener);
+		}
+
+		// Close all open sessions
+		if (sessionService != null) {
+			for (org.eclipse.core.resources.IProject project : sessionService.getAllInstances().keySet()) {
+				try {
+					sessionService.closeCurrentSession(project);
+				} catch (Exception ignored) {
+				}
+			}
+		}
+
+		SessionService.setInstance(null);
+		instance = null;
+	}
 }

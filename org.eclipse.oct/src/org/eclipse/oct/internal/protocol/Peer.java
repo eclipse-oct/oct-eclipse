@@ -8,11 +8,12 @@ package org.eclipse.oct.internal.protocol;
  * Represents a peer (participant) in an OCT session.
  */
 public class Peer {
-    public String id;
-    public String host;
-    public String name;
-    public String email;
-    public PeerMetaData metadata;
+	public String id;
+	public String host;
+	public String name;
+	public String email;
+	public PeerMetaData metadata;
 
-    public Peer() {}
+	public Peer() {
+	}
 }

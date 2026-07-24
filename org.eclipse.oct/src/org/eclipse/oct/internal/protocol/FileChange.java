@@ -5,13 +5,14 @@
 package org.eclipse.oct.internal.protocol;
 
 public class FileChange {
-    public FileChangeEventType type;
-    public String path;
+	public FileChangeEventType type;
+	public String path;
 
-    public FileChange() {}
+	public FileChange() {
+	}
 
-    public FileChange(FileChangeEventType type, String path) {
-        this.type = type;
-        this.path = path;
-    }
+	public FileChange(FileChangeEventType type, String path) {
+		this.type = type;
+		this.path = path;
+	}
 }

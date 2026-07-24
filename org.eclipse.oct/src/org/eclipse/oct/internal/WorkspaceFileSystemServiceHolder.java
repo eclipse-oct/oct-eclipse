@@ -5,10 +5,10 @@
 package org.eclipse.oct.internal;
 
 /**
- * Placeholder interface for the WorkspaceFileSystemService holder.
- * Implemented by WorkspaceFileSystemService to allow CollaborationInstance
- * to hold a reference without a direct compile-time dependency on the fs package.
+ * Placeholder interface for the WorkspaceFileSystemService holder. Implemented
+ * by WorkspaceFileSystemService to allow CollaborationInstance to hold a
+ * reference without a direct compile-time dependency on the fs package.
  */
 public interface WorkspaceFileSystemServiceHolder {
-    // marker
+	// marker
 }

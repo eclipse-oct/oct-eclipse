@@ -85,13 +85,14 @@ public class ServiceProcess implements AutoCloseable {
 			});
 
 			List<Class<?>> remoteInterfaces = new java.util.ArrayList<>();
-			for (BaseMessageHandler h : messageHandlers)
+			for (BaseMessageHandler h : messageHandlers) {
 				remoteInterfaces.add(h.getRemoteInterface());
+			}
 
 			List<Object> localServices = new java.util.ArrayList<>(messageHandlers);
 
 			@SuppressWarnings({ "unchecked", "rawtypes" })
-			List<Class<? extends BaseMessageHandler.BaseRemoteInterface>> typedInterfaces = (List<Class<? extends BaseMessageHandler.BaseRemoteInterface>>) (List) remoteInterfaces;
+			List<Class<? extends BaseMessageHandler.BaseRemoteInterface>> typedInterfaces = (List) remoteInterfaces;
 
 			Launcher.Builder<BaseMessageHandler.BaseRemoteInterface> builder = new Launcher.Builder<BaseMessageHandler.BaseRemoteInterface>()
 					.setLocalServices(localServices).setClassLoader(OCTService.class.getClassLoader())

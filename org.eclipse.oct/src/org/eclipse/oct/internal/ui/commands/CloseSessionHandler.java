@@ -12,7 +12,6 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.oct.internal.SessionService;
-import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
@@ -20,40 +19,47 @@ import org.eclipse.ui.handlers.HandlerUtil;
  */
 public class CloseSessionHandler extends AbstractHandler {
 
-    @Override
-    public Object execute(ExecutionEvent event) throws ExecutionException {
-        SessionService svc = SessionService.getInstance();
-        if (svc == null) return null;
+	@Override
+	public Object execute(ExecutionEvent event) throws ExecutionException {
+		SessionService svc = SessionService.getInstance();
+		if (svc == null) {
+			return null;
+		}
 
-        // Try to find the active project with a session
-        IProject project = getSessionProject(event, svc);
-        if (project != null) {
-            svc.closeCurrentSession(project);
-        }
-        return null;
-    }
+		// Try to find the active project with a session
+		IProject project = getSessionProject(event, svc);
+		if (project != null) {
+			svc.closeCurrentSession(project);
+		}
+		return null;
+	}
 
-    private IProject getSessionProject(ExecutionEvent event, SessionService svc) {
-        // First check selection
-        ISelection selection = HandlerUtil.getCurrentSelection(event);
-        if (selection instanceof IStructuredSelection ss && !ss.isEmpty()) {
-            Object first = ss.getFirstElement();
-            IProject p = null;
-            if (first instanceof IProject proj) p = proj;
-            else if (first instanceof IResource r) p = r.getProject();
-            if (p != null && svc.hasOpenSession(p)) return p;
-        }
+	private IProject getSessionProject(ExecutionEvent event, SessionService svc) {
+		// First check selection
+		ISelection selection = HandlerUtil.getCurrentSelection(event);
+		if (selection instanceof IStructuredSelection ss && !ss.isEmpty()) {
+			Object first = ss.getFirstElement();
+			IProject p = null;
+			if (first instanceof IProject proj) {
+				p = proj;
+			} else if (first instanceof IResource r) {
+				p = r.getProject();
+			}
+			if (p != null && svc.hasOpenSession(p)) {
+				return p;
+			}
+		}
 
-        // Fallback: find any open session
-        for (IProject p : svc.getAllInstances().keySet()) {
-            return p;
-        }
-        return null;
-    }
+		// Fallback: find any open session
+		for (IProject p : svc.getAllInstances().keySet()) {
+			return p;
+		}
+		return null;
+	}
 
-    @Override
-    public boolean isEnabled() {
-        SessionService svc = SessionService.getInstance();
-        return svc != null && !svc.getAllInstances().isEmpty();
-    }
+	@Override
+	public boolean isEnabled() {
+		SessionService svc = SessionService.getInstance();
+		return svc != null && !svc.getAllInstances().isEmpty();
+	}
 }

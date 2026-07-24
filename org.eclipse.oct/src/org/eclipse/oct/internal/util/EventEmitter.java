@@ -9,21 +9,21 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Lightweight event bus. 
+ * Lightweight event bus.
  */
 public class EventEmitter<T> {
 
-    private final List<Consumer<T>> listeners = new ArrayList<>();
+	private final List<Consumer<T>> listeners = new ArrayList<>();
 
-    public Runnable onEvent(Consumer<T> listener) {
-        listeners.add(listener);
-        return () -> listeners.remove(listener);
-    }
+	public Runnable onEvent(Consumer<T> listener) {
+		listeners.add(listener);
+		return () -> listeners.remove(listener);
+	}
 
-    public void fire(T arg) {
-        List<Consumer<T>> copy = new ArrayList<>(listeners);
-        for (Consumer<T> listener : copy) {
-            listener.accept(arg);
-        }
-    }
+	public void fire(T arg) {
+		List<Consumer<T>> copy = new ArrayList<>(listeners);
+		for (Consumer<T> listener : copy) {
+			listener.accept(arg);
+		}
+	}
 }

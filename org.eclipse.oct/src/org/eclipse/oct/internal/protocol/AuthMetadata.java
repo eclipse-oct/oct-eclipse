@@ -8,9 +8,10 @@ package org.eclipse.oct.internal.protocol;
  * Authentication metadata including providers and login page URL.
  */
 public class AuthMetadata {
-    public AuthProvider[] providers;
-    public String loginPageUrl;
-    public String defaultSuccessUrl;
+	public AuthProvider[] providers;
+	public String loginPageUrl;
+	public String defaultSuccessUrl;
 
-    public AuthMetadata() {}
+	public AuthMetadata() {
+	}
 }

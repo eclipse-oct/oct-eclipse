@@ -11,13 +11,14 @@ package org.eclipse.oct.internal.protocol;
  * Represents a shared workspace in an OCT session.
  */
 public class Workspace {
-    public String name;
-    public String[] folders;
+	public String name;
+	public String[] folders;
 
-    public Workspace() {}
+	public Workspace() {
+	}
 
-    public Workspace(String name, String[] folders) {
-        this.name = name;
-        this.folders = folders;
-    }
+	public Workspace(String name, String[] folders) {
+		this.name = name;
+		this.folders = folders;
+	}
 }

@@ -13,18 +13,23 @@ import org.eclipse.swt.graphics.RGB;
  */
 public class PeerAnnotation extends Annotation {
 
-    public static final String TYPE_CURSOR = "org.eclipse.oct.peerCursor";
-    public static final String TYPE_SELECTION = "org.eclipse.oct.peerSelection";
+	public static final String TYPE_CURSOR = "org.eclipse.oct.peerCursor";
+	public static final String TYPE_SELECTION = "org.eclipse.oct.peerSelection";
 
-    private final String peerId;
-    private final RGB color;
+	private final String peerId;
+	private final RGB color;
 
-    public PeerAnnotation(String type, String peerId, RGB color) {
-        super(type, false, peerId);
-        this.peerId = peerId;
-        this.color = color;
-    }
+	public PeerAnnotation(String type, String peerId, RGB color) {
+		super(type, false, peerId);
+		this.peerId = peerId;
+		this.color = color;
+	}
 
-    public String getPeerId() { return peerId; }
-    public RGB getColor() { return color; }
+	public String getPeerId() {
+		return peerId;
+	}
+
+	public RGB getColor() {
+		return color;
+	}
 }

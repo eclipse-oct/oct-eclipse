@@ -5,11 +5,12 @@
 package org.eclipse.oct.internal.protocol;
 
 public class FileChangeEvent {
-    public FileChange[] changes;
+	public FileChange[] changes;
 
-    public FileChangeEvent() {}
+	public FileChangeEvent() {
+	}
 
-    public FileChangeEvent(FileChange[] changes) {
-        this.changes = changes;
-    }
+	public FileChangeEvent(FileChange[] changes) {
+		this.changes = changes;
+	}
 }

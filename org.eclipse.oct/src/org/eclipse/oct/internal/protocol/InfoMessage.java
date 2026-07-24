@@ -5,9 +5,10 @@
 package org.eclipse.oct.internal.protocol;
 
 public class InfoMessage {
-    public String code;
-    public String[] params;
-    public String message;
+	public String code;
+	public String[] params;
+	public String message;
 
-    public InfoMessage() {}
+	public InfoMessage() {
+	}
 }

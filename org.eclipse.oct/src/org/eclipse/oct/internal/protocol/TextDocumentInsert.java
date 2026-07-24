@@ -5,15 +5,16 @@
 package org.eclipse.oct.internal.protocol;
 
 public class TextDocumentInsert {
-    public int startOffset;
-    public Integer endOffset;
-    public String text;
+	public int startOffset;
+	public Integer endOffset;
+	public String text;
 
-    public TextDocumentInsert() {}
+	public TextDocumentInsert() {
+	}
 
-    public TextDocumentInsert(int startOffset, Integer endOffset, String text) {
-        this.startOffset = startOffset;
-        this.endOffset = endOffset;
-        this.text = text;
-    }
+	public TextDocumentInsert(int startOffset, Integer endOffset, String text) {
+		this.startOffset = startOffset;
+		this.endOffset = endOffset;
+		this.text = text;
+	}
 }

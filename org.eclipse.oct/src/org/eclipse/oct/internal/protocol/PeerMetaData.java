@@ -5,14 +5,14 @@
 package org.eclipse.oct.internal.protocol;
 
 public class PeerMetaData {
-    public EncryptionMetaData encryption;
-    public CompressionMetaData compression;
+	public EncryptionMetaData encryption;
+	public CompressionMetaData compression;
 }
 
 class EncryptionMetaData {
-    public String publicKey;
+	public String publicKey;
 }
 
 class CompressionMetaData {
-    public String[] supported;
+	public String[] supported;
 }

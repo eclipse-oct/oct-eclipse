@@ -5,10 +5,11 @@
 package org.eclipse.oct.internal.protocol;
 
 public class FormAuthProviderField {
-    public String name;
-    public boolean required;
-    public InfoMessage label;
-    public InfoMessage placeHolder;
+	public String name;
+	public boolean required;
+	public InfoMessage label;
+	public InfoMessage placeHolder;
 
-    public FormAuthProviderField() {}
+	public FormAuthProviderField() {
+	}
 }

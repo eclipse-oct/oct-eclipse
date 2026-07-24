@@ -24,45 +24,50 @@ import org.eclipse.ui.handlers.HandlerUtil;
  */
 public class HostSessionHandler extends AbstractHandler {
 
-    @Override
-    public Object execute(ExecutionEvent event) throws ExecutionException {
-        IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
+	@Override
+	public Object execute(ExecutionEvent event) throws ExecutionException {
+		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
 
-        IProject project = getSelectedProject(event);
-        if (project == null) {
-            org.eclipse.jface.dialogs.MessageDialog.openError(
-                window.getShell(), "Open Collaboration Tools",
-                "Please select a project to share.");
-            return null;
-        }
+		IProject project = getSelectedProject(event);
+		if (project == null) {
+			org.eclipse.jface.dialogs.MessageDialog.openError(window.getShell(), "Open Collaboration Tools",
+					"Please select a project to share.");
+			return null;
+		}
 
-        List<String> folders = new ArrayList<>();
-        folders.add(project.getName());
-        Workspace workspace = new Workspace(project.getName(), folders.toArray(new String[0]));
+		List<String> folders = new ArrayList<>();
+		folders.add(project.getName());
+		Workspace workspace = new Workspace(project.getName(), folders.toArray(new String[0]));
 
-        SessionService.getInstance().createRoom(workspace, project);
-        return null;
-    }
+		SessionService.getInstance().createRoom(workspace, project);
+		return null;
+	}
 
-    private IProject getSelectedProject(ExecutionEvent event) {
-        ISelection selection = HandlerUtil.getCurrentSelection(event);
-        if (selection instanceof IStructuredSelection ss && !ss.isEmpty()) {
-            Object first = ss.getFirstElement();
-            if (first instanceof IProject p) return p;
-            if (first instanceof IResource r) return r.getProject();
-        }
-        // Fallback: active editor's project
-        var page = HandlerUtil.getActiveWorkbenchWindow(event).getActivePage();
-        if (page != null && page.getActiveEditor() != null) {
-            var input = page.getActiveEditor().getEditorInput();
-            IResource res = input.getAdapter(IResource.class);
-            if (res != null) return res.getProject();
-        }
-        return null;
-    }
+	private IProject getSelectedProject(ExecutionEvent event) {
+		ISelection selection = HandlerUtil.getCurrentSelection(event);
+		if (selection instanceof IStructuredSelection ss && !ss.isEmpty()) {
+			Object first = ss.getFirstElement();
+			if (first instanceof IProject p) {
+				return p;
+			}
+			if (first instanceof IResource r) {
+				return r.getProject();
+			}
+		}
+		// Fallback: active editor's project
+		var page = HandlerUtil.getActiveWorkbenchWindow(event).getActivePage();
+		if (page != null && page.getActiveEditor() != null) {
+			var input = page.getActiveEditor().getEditorInput();
+			IResource res = input.getAdapter(IResource.class);
+			if (res != null) {
+				return res.getProject();
+			}
+		}
+		return null;
+	}
 
-    @Override
-    public boolean isEnabled() {
-        return SessionService.getInstance() != null;
-    }
+	@Override
+	public boolean isEnabled() {
+		return SessionService.getInstance() != null;
+	}
 }
