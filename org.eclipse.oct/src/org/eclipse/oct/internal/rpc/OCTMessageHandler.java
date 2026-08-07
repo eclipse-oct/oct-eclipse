@@ -7,6 +7,11 @@ package org.eclipse.oct.internal.rpc;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
+import org.eclipse.core.resources.WorkspaceJob;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification;
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
@@ -126,20 +131,21 @@ public class OCTMessageHandler extends BaseMessageHandler {
 	public void sessionClosed() {
 		if (collaborationInstance != null && !collaborationInstance.isHost) {
 			Display.getDefault().asyncExec(() -> {
-				IProjectCloser closer = () -> {
-					try {
-						collaborationInstance.project.close(null);
-					} catch (org.eclipse.core.runtime.CoreException e) {
-						LOG.warning("Failed to close guest project: " + e.getMessage());
+				var project = collaborationInstance.project;
+				WorkspaceJob job = new WorkspaceJob("Deleting Project: " + project.getName()) {
+					@Override
+					public IStatus runInWorkspace(IProgressMonitor monitor) throws CoreException {
+						if (project != null && project.exists()) {
+							project.delete(true, true, monitor);
+						}
+						return Status.OK_STATUS;
 					}
 				};
-				closer.close();
+				job.setRule(project);
+				job.setUser(false);
+				job.schedule();
 			});
 		}
 	}
 
-	@FunctionalInterface
-	private interface IProjectCloser {
-		void close();
-	}
 }

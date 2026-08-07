@@ -22,13 +22,13 @@ public class DocumentSyncListener implements IDocumentListener {
 
 	private static final Logger LOG = Logger.getLogger(DocumentSyncListener.class.getName());
 
-	private final String path;
+	private final String octPath;
 	private final OCTService remoteService;
 	private final AtomicBoolean sendUpdates;
 	private final AtomicBoolean isSyncing = new AtomicBoolean(false);
 
-	public DocumentSyncListener(String path, OCTService remoteService, AtomicBoolean sendUpdates) {
-		this.path = path;
+	public DocumentSyncListener(String octPath, OCTService remoteService, AtomicBoolean sendUpdates) {
+		this.octPath = octPath;
 		this.remoteService = remoteService;
 		this.sendUpdates = sendUpdates;
 	}
@@ -50,9 +50,9 @@ public class DocumentSyncListener implements IDocumentListener {
 
 		TextDocumentInsert insert = new TextDocumentInsert(startOffset, endOffset, newText);
 		try {
-			remoteService.updateDocument(path, new TextDocumentInsert[] { insert });
+			remoteService.updateDocument(octPath, new TextDocumentInsert[] { insert });
 		} catch (Exception e) {
-			LOG.warning("Failed to send document update for " + path + ": " + e.getMessage());
+			LOG.warning("Failed to send document update for " + octPath + ": " + e.getMessage());
 		}
 
 		// Trigger re-sync if we appear to be out of sync with the host

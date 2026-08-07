@@ -12,10 +12,13 @@ import java.util.logging.Logger;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.oct.internal.editor.EditorManager;
+import org.eclipse.oct.internal.fs.OctFileSystem;
 import org.eclipse.oct.internal.protocol.ClientTextSelection;
 import org.eclipse.oct.internal.protocol.FileChange;
 import org.eclipse.oct.internal.protocol.FileChangeEvent;
@@ -25,6 +28,7 @@ import org.eclipse.oct.internal.protocol.SessionData;
 import org.eclipse.oct.internal.protocol.TextDocumentInsert;
 import org.eclipse.oct.internal.rpc.BaseMessageHandler;
 import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.swt.widgets.Display;
 
 /**
  * Per-session state holder.
@@ -109,7 +113,7 @@ public class CollaborationInstance {
 	public void handleFileSystemChange(FileChangeEvent event) {
 		if (!isHost) {
 			// Invalidate EFS caches and refresh the project resource tree
-			org.eclipse.oct.internal.fs.OctFileSystem efs = org.eclipse.oct.internal.fs.OctFileSystem.getInstance();
+			OctFileSystem efs = OctFileSystem.getInstance();
 			for (FileChange change : event.changes) {
 				if (efs != null) {
 					try {
@@ -119,10 +123,10 @@ public class CollaborationInstance {
 					}
 				}
 			}
-			org.eclipse.swt.widgets.Display.getDefault().asyncExec(() -> {
+			Display.getDefault().asyncExec(() -> {
 				try {
-					project.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, null);
-				} catch (org.eclipse.core.runtime.CoreException e) {
+					project.refreshLocal(IResource.DEPTH_INFINITE, null);
+				} catch (CoreException e) {
 					LOG.warning("Failed to refresh project: " + e.getMessage());
 				}
 			});
@@ -166,13 +170,13 @@ public class CollaborationInstance {
 	}
 
 	// EditorManager reference set after construction to avoid circular deps
-	private org.eclipse.oct.internal.editor.EditorManager editorManager;
+	private EditorManager editorManager;
 
-	public void setEditorManager(org.eclipse.oct.internal.editor.EditorManager em) {
+	public void setEditorManager(EditorManager em) {
 		this.editorManager = em;
 	}
 
-	public org.eclipse.oct.internal.editor.EditorManager getEditorManager() {
+	public EditorManager getEditorManager() {
 		return editorManager;
 	}
 

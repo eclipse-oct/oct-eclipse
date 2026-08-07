@@ -4,6 +4,7 @@
  */
 package org.eclipse.oct.internal.editor;
 
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,6 +16,7 @@ import java.util.logging.Logger;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DocumentRewriteSession;
 import org.eclipse.jface.text.DocumentRewriteSessionType;
@@ -28,10 +30,12 @@ import org.eclipse.jface.text.source.AnnotationPainter;
 import org.eclipse.jface.text.source.IAnnotationModel;
 import org.eclipse.jface.text.source.IAnnotationModelExtension;
 import org.eclipse.jface.text.source.ISourceViewer;
+import org.eclipse.jface.viewers.IPostSelectionProvider;
 import org.eclipse.oct.internal.PeerColors;
 import org.eclipse.oct.internal.protocol.ClientTextSelection;
 import org.eclipse.oct.internal.protocol.TextDocumentInsert;
 import org.eclipse.oct.internal.rpc.OCTService;
+import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorPart;
@@ -41,6 +45,7 @@ import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.ide.IDE;
+import org.eclipse.ui.texteditor.AbstractTextEditor;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 /**
@@ -59,6 +64,15 @@ public class EditorManager implements IPartListener2 {
 	/** Per editor-path state */
 	private final Map<String, EditorState> editorStates = new HashMap<>();
 
+	/**
+	 * Paths whose content has already been pushed to Yjs without an editor being
+	 * registered (see {@link #guestOpenedEditor}). Consulted by {@link #partOpened}
+	 * so that a later host-side open of the same path doesn't resend the content —
+	 * openDocument always does a full delete+insert, so a second send is a needless
+	 * full-document replace that marks other peers' editors dirty.
+	 */
+	private final java.util.Set<String> seededPaths = new java.util.HashSet<>();
+
 	private final AtomicBoolean disposed = new AtomicBoolean(false);
 
 	public String followingPeerId = null;
@@ -69,11 +83,13 @@ public class EditorManager implements IPartListener2 {
 	 * to the host's own workflow.
 	 */
 	private volatile boolean followGuestSelection = false;
+	private boolean isHost;
 
-	public EditorManager(OCTService remoteService, IProject project) {
+	public EditorManager(OCTService remoteService, IProject project, boolean isHost) {
 		this.remoteService = remoteService;
 		this.project = project;
 		this.peerColors = new PeerColors();
+		this.isHost = isHost;
 		registerPartListener();
 	}
 
@@ -106,15 +122,26 @@ public class EditorManager implements IPartListener2 {
 			return;
 		}
 		IFile file = editor.getEditorInput().getAdapter(IFile.class);
-		if (file == null) {
+		if (file == null || !file.exists()) {
 			return;
 		}
-		String path = pathFor(file);
-		boolean firstRegistration = registerEditor(path, textEditor);
+		if (file.getProject() != project) {
+			// ignore files from other projects
+			return;
+		}
+		String octPath = octPath(file);
+		boolean firstRegistration = registerEditor(octPath, textEditor);
 		if (!firstRegistration) {
 			// Already tracked — do not resend. openDocument always does a full
 			// delete+insert on the Yjs side (no diffing), so re-sending unchanged
 			// content on every partOpened marks guest editors dirty for no reason.
+			return;
+		}
+		if (seededPaths.remove(octPath)) {
+			// Content was already pushed to Yjs from guestOpenedEditor's no-UI
+			// path (a guest opened this file before the host did). The listeners
+			// are now attached via registerEditor above, but resending the
+			// content here would be a second full-document replace.
 			return;
 		}
 
@@ -125,19 +152,41 @@ public class EditorManager implements IPartListener2 {
 			// (e.g. when the part was just force-opened for a guest) — fall back to
 			// reading the resource directly rather than seeding Yjs with a blank doc.
 			try {
-				if (file.exists()) {
-					String diskText = readFileContent(file);
-					if (!diskText.isEmpty()) {
-						text = diskText;
-					}
+				String diskText = readFileContent(file);
+				if (!diskText.isEmpty()) {
+					text = diskText;
 				}
 			} catch (Exception e) {
-				LOG.warning("Failed to read fallback content for: " + path + " - " + e.getMessage());
+				LOG.warning("Failed to read fallback content for: " + octPath + " - " + e.getMessage());
 			}
 		}
 		// Seed Yjs with real content. Empty string would make
 		// guests re-read a blank buffer when switching tabs or on FileChange Update.
-		remoteService.openDocument("text", path, text);
+		remoteService.openDocument("text", octPath, text);
+	}
+
+	/**
+	 * If we host, return workspace relative path. If we guesting resolves to temp
+	 * project relative path.
+	 * 
+	 * @param file
+	 * @return
+	 */
+	private String octPath(IFile file) {
+		return isHost ? file.getFullPath().toString() : file.getProjectRelativePath().toString();
+	}
+
+	/**
+	 * Return IFile for the given OCT path. If we host then octPath is handled the
+	 * workspace relative path. If we are guest the path is resolved as relative
+	 * path inside the temp project.
+	 * 
+	 * @param octPath
+	 * @return
+	 */
+	private IFile eclipseFile(String octPath) {
+		var iFile = isHost ? project.getWorkspace().getRoot().getFile(new Path(octPath)) : project.getFile(octPath);
+		return iFile.exists() ? iFile : null;
 	}
 
 	@Override
@@ -153,7 +202,7 @@ public class EditorManager implements IPartListener2 {
 		if (file == null) {
 			return;
 		}
-		unregisterEditor(pathFor(file));
+		unregisterEditor(octPath(file));
 	}
 
 	@Override
@@ -187,8 +236,9 @@ public class EditorManager implements IPartListener2 {
 	 * Returns {@code true} only if this call performed the (one-time) registration,
 	 * so callers can gate actions that must happen exactly once per document.
 	 */
-	private boolean registerEditor(String path, ITextEditor editor) {
-		if (editorStates.containsKey(path)) {
+	private boolean registerEditor(String octPath, ITextEditor editor) {
+		EditorState existing = findEditorState(octPath);
+		if (existing != null) {
 			return false;
 		}
 
@@ -199,13 +249,15 @@ public class EditorManager implements IPartListener2 {
 
 		AtomicBoolean sendUpdates = new AtomicBoolean(true);
 
-		DocumentSyncListener docListener = new DocumentSyncListener(path, remoteService, sendUpdates);
+		DocumentSyncListener docListener = new DocumentSyncListener(octPath, remoteService, sendUpdates);
 		document.addDocumentListener(docListener);
 
-		ISourceViewer viewer = editor.getAdapter(ISourceViewer.class);
-		SelectionSyncListener selListener = null;
-		if (viewer != null) {
-			selListener = new SelectionSyncListener(path, remoteService, "self");
+		ISourceViewer viewer = getSourceViewer(editor);
+
+		SelectionSyncListener selListener = new SelectionSyncListener(octPath, remoteService, "self");
+		if (editor.getSelectionProvider() instanceof IPostSelectionProvider postSelect) {
+			postSelect.addPostSelectionChangedListener(selListener);
+		} else if (viewer != null) {
 			viewer.getSelectionProvider().addSelectionChangedListener(selListener);
 		}
 
@@ -225,21 +277,21 @@ public class EditorManager implements IPartListener2 {
 			installAnnotationPainter(viewer, cursorStrategy, selectionStrategy);
 		}
 
-		editorStates.put(path, new EditorState(editor, document, peerModel, docListener, selListener, sendUpdates,
+		editorStates.put(octPath, new EditorState(editor, document, peerModel, docListener, selListener, sendUpdates,
 				cursorStrategy, selectionStrategy));
-		LOG.fine("Registered editor for: " + path);
+		LOG.info("Registered editor for: " + octPath);
 		return true;
 	}
 
-	private void unregisterEditor(String path) {
-		EditorState state = editorStates.remove(path);
+	private void unregisterEditor(String octPath) {
+		EditorState state = findEditorState(octPath);
 		if (state == null) {
 			return;
 		}
 
 		state.document.removeDocumentListener(state.docListener);
 		if (state.selListener != null) {
-			ISourceViewer viewer = state.editor.getAdapter(ISourceViewer.class);
+			ISourceViewer viewer = getSourceViewer(state.editor);
 			if (viewer != null) {
 				viewer.getSelectionProvider().removeSelectionChangedListener(state.selListener);
 				IAnnotationModel baseModel = viewer.getAnnotationModel();
@@ -250,6 +302,30 @@ public class EditorManager implements IPartListener2 {
 		}
 		state.cursorStrategy.dispose();
 		state.selectionStrategy.dispose();
+		editorStates.remove(octPath);
+	}
+
+	/**
+	 * {@code ITextEditor} has no public accessor for its underlying
+	 * {@code ISourceViewer}. {@code getAdapter(ISourceViewer.class)} only works for
+	 * editors that explicitly register that adapter, which excludes e.g. the
+	 * Generic Editor's {@code ExtensionBasedTextEditor} (used for plain text files
+	 * with no dedicated editor). Every Eclipse text editor, including that one,
+	 * does extend {@code AbstractTextEditor} though, which declares a protected
+	 * no-arg {@code getSourceViewer()} — fall back to that via reflection.
+	 */
+	private static ISourceViewer getSourceViewer(ITextEditor editor) {
+		if (!(editor instanceof AbstractTextEditor)) {
+			return null;
+		}
+		try {
+			Method method = AbstractTextEditor.class.getDeclaredMethod("getSourceViewer");
+			method.setAccessible(true);
+			return (ISourceViewer) method.invoke(editor);
+		} catch (Exception e) {
+			LOG.warning("Failed to obtain source viewer for " + editor.getClass().getName() + ": " + e.getMessage());
+			return null;
+		}
 	}
 
 	private void installAnnotationPainter(ISourceViewer viewer, PeerCursorDrawingStrategy cursorStrat,
@@ -260,6 +336,11 @@ public class EditorManager implements IPartListener2 {
 			painter.addAnnotationType(PeerAnnotation.TYPE_CURSOR, "org.eclipse.oct.cursor");
 			painter.addDrawingStrategy("org.eclipse.oct.selection", selStrat);
 			painter.addAnnotationType(PeerAnnotation.TYPE_SELECTION, "org.eclipse.oct.selection");
+			painter.setAnnotationTypeColor(PeerAnnotation.TYPE_CURSOR,
+					viewer.getTextWidget().getDisplay().getSystemColor(SWT.COLOR_BLUE));
+			painter.setAnnotationTypeColor(PeerAnnotation.TYPE_SELECTION,
+					viewer.getTextWidget().getDisplay().getSystemColor(SWT.COLOR_CYAN));
+
 			if (viewer instanceof ITextViewerExtension2 ext2) {
 				ext2.addPainter(painter);
 			}
@@ -273,12 +354,12 @@ public class EditorManager implements IPartListener2 {
 	 * Apply remote document edits with echo suppression. Port of
 	 * EditorManager.updateDocument.
 	 */
-	public void updateDocument(String path, TextDocumentInsert[] updates) {
+	public void updateDocument(String octPath, TextDocumentInsert[] updates) {
 		if (updates == null || updates.length == 0) {
 			return;
 		}
 		Display.getDefault().asyncExec(() -> {
-			EditorState state = editorStates.get(path);
+			EditorState state = findEditorState(octPath);
 			if (state == null) {
 				return;
 			}
@@ -318,9 +399,9 @@ public class EditorManager implements IPartListener2 {
 	 * Update peer cursor/selection annotations. Port of
 	 * EditorManager.updateTextSelection.
 	 */
-	public void updateTextSelection(String path, ClientTextSelection[] selections) {
+	public void updateTextSelection(String octPath, ClientTextSelection[] selections) {
 		Display.getDefault().asyncExec(() -> {
-			EditorState state = editorStates.get(path);
+			EditorState state = findEditorState(octPath);
 			if (state == null) {
 				return;
 			}
@@ -357,7 +438,7 @@ public class EditorManager implements IPartListener2 {
 
 					// Follow mode
 					if (sel.peer.equals(followingPeerId)) {
-						followTo(path, caretOffset);
+						followTo(eclipseFile(octPath), caretOffset);
 					}
 				}
 			}
@@ -375,15 +456,25 @@ public class EditorManager implements IPartListener2 {
 	 */
 	public void guestOpenedEditor(String documentPath) {
 		Display.getDefault().asyncExec(() -> {
-			String relPath = documentPath.replaceFirst("^[^/]+/", "");
-			IFile file = project.getFile(relPath);
+			IFile file = eclipseFile(documentPath);
 			if (!file.exists()) {
 				return;
 			}
 
-			if (editorStates.containsKey(documentPath)) {
+			EditorState existing = findEditorState(documentPath);
+			if (existing != null) {
 				// Already open/registered on the host — content is already
 				// live-synced, so only bring it to front if opted in.
+				if (followGuestSelection) {
+					activateEditor(file);
+				}
+				return;
+			}
+
+			if (seededPaths.contains(documentPath)) {
+				// Already pushed once via the no-UI path below (e.g. a second
+				// guest opening the same file before the host does) — sending
+				// openDocument again would be a needless full-document replace.
 				if (followGuestSelection) {
 					activateEditor(file);
 				}
@@ -394,16 +485,6 @@ public class EditorManager implements IPartListener2 {
 				// Opens the part, which triggers partOpened() -> first-time
 				// registration -> real content sent exactly once.
 				activateEditor(file);
-			} else {
-				// Don't steal focus. Read the current on-disk content directly
-				// (avoids any race with an editor's document still loading)
-				// and seed Yjs with it so the guest doesn't see an empty file.
-				try {
-					String text = readFileContent(file);
-					remoteService.openDocument("text", documentPath, text);
-				} catch (Exception e) {
-					LOG.warning("Failed to read file for guest: " + e.getMessage());
-				}
 			}
 		});
 	}
@@ -431,14 +512,12 @@ public class EditorManager implements IPartListener2 {
 		this.followGuestSelection = followGuestSelection;
 	}
 
-	private void followTo(String path, int offset) {
+	private void followTo(IFile file, int offset) {
 		try {
-			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
-			String relPath = path.replaceFirst("^[^/]+/", "");
-			IFile file = project.getFile(relPath);
 			if (!file.exists()) {
 				return;
 			}
+			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
 			IEditorPart editor = IDE.openEditor(page, file, false);
 			if (editor instanceof ITextEditor textEditor) {
 				textEditor.selectAndReveal(offset, 0);
@@ -499,33 +578,24 @@ public class EditorManager implements IPartListener2 {
 		return handled.get();
 	}
 
-	private String pathFor(IFile file) {
-		return file.getProject().getName() + "/" + file.getProjectRelativePath().toString();
-	}
-
 	/**
 	 * Resolve editor state by exact OCT path, or by suffix so a guest temp project
 	 * ({@code name-oct-…/root/file}) matches a host path ({@code root/file}).
 	 */
-	private EditorState findEditorState(String path) {
-		if (path == null) {
+	private EditorState findEditorState(String octPath) {
+		if (octPath == null) {
 			return null;
 		}
-		EditorState exact = editorStates.get(path);
+		EditorState exact = editorStates.get(octPath);
 		if (exact != null) {
 			return exact;
-		}
-		for (Map.Entry<String, EditorState> entry : editorStates.entrySet()) {
-			String key = entry.getKey();
-			if (key.endsWith("/" + path) || path.endsWith("/" + key)) {
-				return entry.getValue();
-			}
 		}
 		return null;
 	}
 
 	public void dispose() {
 		disposed.set(true);
+		seededPaths.clear();
 		Display.getDefault().asyncExec(() -> {
 			if (PlatformUI.isWorkbenchRunning()) {
 				try {

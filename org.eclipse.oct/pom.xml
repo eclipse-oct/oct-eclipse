@@ -52,14 +52,46 @@
                 </executions>
             </plugin>
 
-            <!-- Stage oct-service-process executables into bin/ before packaging.
-                 Set -Doct.project.path=/path/to/open-collaboration-tools to enable.
-                 The npm build produces binaries via "npm run create:executable". -->
+            <!-- Build the native oct-service-process executable via npm, then stage it into
+                 oct-bin/ so ServiceProcess.EXECUTABLE_BASE ("oct-bin/oct-service-process") can
+                 extract it from the packaged bundle at runtime.
+                 Requires Node.js 20+ and the sibling open-collaboration-tools checkout at
+                 -Doct.project.path=... (defaulted in the parent pom). Hard-fails if npm or the
+                 build script is unavailable. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
+                    <execution>
+                        <id>build-service-process-executable</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <echo message="Building oct-service-process native executable (oct.project.path=${oct.project.path})"/>
+                                <condition property="npm.executable" value="npm.cmd" else="npm">
+                                    <os family="windows"/>
+                                </condition>
+                                <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
+                                    <arg value="install"/>
+                                </exec>
+                                <!-- Build every workspace so the server bundle (needed by the
+                                     integration tests) and service-process bundle are both up to date. -->
+                                <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
+                                    <arg value="run"/>
+                                    <arg value="build"/>
+                                </exec>
+                                <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
+                                    <arg value="run"/>
+                                    <arg value="create:executable"/>
+                                    <arg value="--workspace=open-collaboration-service-process"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>stage-executables</id>
                         <phase>generate-resources</phase>
@@ -68,11 +100,12 @@
                         </goals>
                         <configuration>
                             <target>
-                                <echo message="Staging oct-service-process binaries (oct.project.path=${oct.project.path})"/>
-                                <copy todir="${project.basedir}/bin" failonerror="false" quiet="true">
+                                <echo message="Staging oct-service-process binaries into oct-bin/ (oct.project.path=${oct.project.path})"/>
+                                <copy todir="${project.basedir}/oct-bin" failonerror="true">
                                     <fileset dir="${oct.project.path}/packages/open-collaboration-service-process/bin"
-                                             includes="**/*" erroronmissingdir="false"/>
+                                             includes="oct-service-process*" erroronmissingdir="true"/>
                                 </copy>
+                                <chmod file="${project.basedir}/oct-bin/oct-service-process" perm="ugo+rx" osfamily="unix"/>
                             </target>
                         </configuration>
                     </execution>

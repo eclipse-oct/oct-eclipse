@@ -17,12 +17,13 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <!-- Path to the open-collaboration-tools project (for building service process) -->
-        <oct.project.path>${project.basedir}/../open-collaboration-tools</oct.project.path>
+        <oct.project.path>${project.basedir}/../../open-collaboration-tools</oct.project.path>
     </properties>
 
     <modules>
         <module>org.eclipse.oct.target</module>
         <module>org.eclipse.oct</module>
+        <module>org.eclipse.oct.tests</module>
         <module>org.eclipse.oct.feature</module>
         <module>org.eclipse.oct.repository</module>
     </modules>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.eclipse.oct</groupId>
+        <artifactId>org.eclipse.oct.parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>org.eclipse.oct.tests</artifactId>
+    <packaging>eclipse-test-plugin</packaging>
+
+    <name>Eclipse OCT Tests</name>
+    <description>Integration tests for the Eclipse OCT plugin. Spins up the real
+        open-collaboration-server and the native oct-service-process executable and
+        drives the plugin's own internal classes to verify the host/guest handshake
+        and file-system path conversion against the OCT protocol.</description>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-surefire-plugin</artifactId>
+                <version>${tycho.version}</version>
+                <configuration>
+                    <!-- The org.eclipse.oct host bundle's Activator extends AbstractUIPlugin and
+                         populates an ImageRegistry on start, so we launch the workbench harness.
+                         Tests themselves are pure JUnit 5 and never touch SWT. -->
+                    <useUIHarness>true</useUIHarness>
+                    <providerHint>junit5</providerHint>
+                    <trimStackTrace>false</trimStackTrace>
+                    <forkedProcessTimeoutInSeconds>300</forkedProcessTimeoutInSeconds>
+                    <argLine>${oct.tests.argLine}</argLine>
+                    <systemProperties>
+                        <!-- Point tests at the sibling open-collaboration-tools checkout so
+                             they can locate the OCT server entry point (bin/server). -->
+                        <oct.project.path>${oct.project.path}</oct.project.path>
+                    </systemProperties>
+                    <dependencies>
+                        <!-- Eclipse 2026-03 ships JUnit 5 with Maven-style bundle names. -->
+                        <dependency>
+                            <type>eclipse-plugin</type>
+                            <artifactId>junit-jupiter-engine</artifactId>
+                            <version>0.0.0</version>
+                        </dependency>
+                        <dependency>
+                            <type>eclipse-plugin</type>
+                            <artifactId>junit-platform-launcher</artifactId>
+                            <version>0.0.0</version>
+                        </dependency>
+                    </dependencies>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <properties>
+        <!-- Empty by default; the macos profile below overrides it with
+             -XstartOnFirstThread, which SWT requires when running the workbench
+             harness on macOS. -->
+        <oct.tests.argLine></oct.tests.argLine>
+    </properties>
+
+    <profiles>
+        <profile>
+            <id>macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <oct.tests.argLine>-XstartOnFirstThread</oct.tests.argLine>
+            </properties>
+        </profile>
+    </profiles>
+</project>

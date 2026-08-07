@@ -152,12 +152,12 @@ public class SessionView extends ViewPart {
 		// Identity (self)
 		if (instance.identity != null) {
 			String selfRole = instance.isHost ? "(you • host)" : "(you)";
-			renderPeerRow(peerList, instance.identity, selfRole, instance.peerColors, false);
+			renderPeerRow(peerList, instance.identity, selfRole, true, instance.peerColors, false);
 		}
 
 		// Host (for guests)
 		if (!instance.isHost && instance.host != null) {
-			renderPeerRow(peerList, instance.host, "(host)", instance.peerColors, true);
+			renderPeerRow(peerList, instance.host, "(host)", false, instance.peerColors, true);
 		}
 
 		// Guests
@@ -165,19 +165,21 @@ public class SessionView extends ViewPart {
 			if (instance.identity != null && guest.id.equals(instance.identity.id)) {
 				continue;
 			}
-			renderPeerRow(peerList, guest, "", instance.peerColors, !instance.isHost);
+			renderPeerRow(peerList, guest, "", false, instance.peerColors, !instance.isHost);
 		}
 	}
 
-	private void renderPeerRow(Composite parent, Peer peer, String suffix, PeerColors peerColors, boolean showFollow) {
+	private void renderPeerRow(Composite parent, Peer peer, String suffix, boolean meHost, PeerColors peerColors, boolean showFollow) {
 		// Color dot
 		Label dot = new Label(parent, SWT.NONE);
-		RGB rgb = peerColors.getColor(peer.id);
-		Color c = new Color(parent.getDisplay(), rgb);
-		allocatedColors.add(c);
-		dot.setBackground(c);
-		dot.setText("  ");
-
+		if (!meHost) {
+			RGB rgb = peerColors.getColor(peer.id);
+			Color c = new Color(parent.getDisplay(), rgb);
+			allocatedColors.add(c);
+			dot.setForeground(c);
+		}
+		dot.setText(" * ");
+		GridDataFactory.fillDefaults().grab(false, false).applyTo(dot);
 		// Name
 		Label nameLbl = new Label(parent, SWT.NONE);
 		String displayName = peer.name;

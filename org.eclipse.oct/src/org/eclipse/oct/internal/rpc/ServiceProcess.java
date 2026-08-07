@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -29,14 +30,32 @@ public class ServiceProcess implements AutoCloseable {
 
 	private final String serverUrl;
 	private final List<BaseMessageHandler> messageHandlers;
+	private final Supplier<String> savedAuthTokenSupplier;
 
 	private Process currentProcess;
 	private Launcher<BaseMessageHandler.BaseRemoteInterface> jsonRpc;
 	private Path executablePath;
 
 	public ServiceProcess(String serverUrl, List<BaseMessageHandler> messageHandlers) {
+		this(serverUrl, messageHandlers, () -> AuthenticationService.getInstance().getAuthToken(serverUrl));
+	}
+
+	/**
+	 * @param savedAuthTokenSupplier supplies a previously saved auth token (or
+	 *            {@code null}) for {@code serverUrl}, passed to the native
+	 *            process via {@code --auth-token}. The single-arg constructor
+	 *            defaults to {@link AuthenticationService#getAuthToken}, which
+	 *            touches Equinox secure storage and can trigger a master
+	 *            password prompt on first access. Callers that don't need a
+	 *            saved token — e.g. tests that always perform a fresh
+	 *            simple-login — can pass {@code () -> null} to avoid touching
+	 *            secure storage entirely.
+	 */
+	public ServiceProcess(String serverUrl, List<BaseMessageHandler> messageHandlers,
+			Supplier<String> savedAuthTokenSupplier) {
 		this.serverUrl = serverUrl;
 		this.messageHandlers = messageHandlers;
+		this.savedAuthTokenSupplier = savedAuthTokenSupplier;
 		startProcess();
 	}
 
@@ -59,7 +78,7 @@ public class ServiceProcess implements AutoCloseable {
 		}
 
 		try {
-			String savedAuthToken = AuthenticationService.getInstance().getAuthToken(serverUrl);
+			String savedAuthToken = savedAuthTokenSupplier.get();
 			String tokenArg = (savedAuthToken != null) ? savedAuthToken : "";
 
 			ProcessBuilder pb = new ProcessBuilder(executablePath.toString(), "--server-address=" + serverUrl,

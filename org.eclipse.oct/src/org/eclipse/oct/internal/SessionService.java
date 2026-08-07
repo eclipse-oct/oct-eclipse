@@ -26,6 +26,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.oct.internal.auth.AuthenticationService;
+import org.eclipse.oct.internal.editor.EditorManager;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemService;
 import org.eclipse.oct.internal.prefs.OCTSettings;
 import org.eclipse.oct.internal.protocol.SessionData;
@@ -218,8 +219,7 @@ public class SessionService {
 		instance.setWorkspaceFileSystem(wfs);
 
 		// Wire EditorManager
-		org.eclipse.oct.internal.editor.EditorManager em = new org.eclipse.oct.internal.editor.EditorManager(
-				(org.eclipse.oct.internal.rpc.OCTService) process.getOctService(), project);
+		EditorManager em = new EditorManager((OCTService) process.getOctService(), project, isHost);
 		instance.setEditorManager(em);
 
 		instances.put(project, instance);

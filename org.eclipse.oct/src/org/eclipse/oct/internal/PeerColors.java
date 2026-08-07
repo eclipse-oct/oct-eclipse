@@ -14,12 +14,13 @@ import org.eclipse.swt.graphics.RGB;
  */
 public class PeerColors {
 
-	private static final RGB[] DEFAULT_COLORS = { new RGB(255, 255, 0), // Yellow
+	private static final RGB[] DEFAULT_COLORS = {
 			new RGB(0, 200, 0), // Green
+			new RGB(0, 0, 200), // Blue
 			new RGB(255, 165, 0), // Orange
-			new RGB(0, 0, 255), // Blue
-			new RGB(255, 0, 255), // Magenta
+			new RGB(200, 0, 200), // Magenta
 			new RGB(0, 200, 200), // Cyan
+			new RGB(200, 200, 0), // Yellow
 	};
 
 	private final Map<String, RGB> colors = new HashMap<>();

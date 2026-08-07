@@ -54,7 +54,8 @@ public class WorkspaceFileSystemService implements WorkspaceFileSystemServiceHol
 		}
 
 		FileType type = getFileType(resource);
-		long mtime = resource.getLocalTimeStamp();
+		long mtime = resource.getModificationStamp();
+		long ctime = resource.getLocalTimeStamp();
 		long size = 0;
 		if (resource instanceof IFile file) {
 			try {
@@ -62,7 +63,7 @@ public class WorkspaceFileSystemService implements WorkspaceFileSystemServiceHol
 			} catch (Exception ignored) {
 			}
 		}
-		return new FileSystemStat(type, mtime, mtime, size, null);
+		return new FileSystemStat(type, mtime, ctime, size, null);
 	}
 
 	public FileContent readFile(String path) {

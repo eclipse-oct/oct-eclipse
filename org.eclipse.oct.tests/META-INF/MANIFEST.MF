@@ -1,0 +1,15 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Eclipse OCT Tests
+Bundle-SymbolicName: org.eclipse.oct.tests
+Bundle-Version: 1.0.0.qualifier
+Bundle-Vendor: Eclipse ECD
+Fragment-Host: org.eclipse.oct;bundle-version="1.0.0"
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Automatic-Module-Name: org.eclipse.oct.tests
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ org.eclipse.core.filesystem,
+ org.eclipse.equinox.common,
+ junit-jupiter-api;bundle-version="[5.14.3,6.0.0)",
+ junit-jupiter-params;bundle-version="[5.14.3,6.0.0)"

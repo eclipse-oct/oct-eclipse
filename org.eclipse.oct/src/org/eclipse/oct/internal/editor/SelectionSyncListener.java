@@ -20,12 +20,12 @@ public class SelectionSyncListener implements ISelectionChangedListener {
 
 	private static final Logger LOG = Logger.getLogger(SelectionSyncListener.class.getName());
 
-	private final String path;
+	private final String octPath;
 	private final OCTService remoteService;
 	private final String selfPeerId;
 
-	public SelectionSyncListener(String path, OCTService remoteService, String selfPeerId) {
-		this.path = path;
+	public SelectionSyncListener(String octPath, OCTService remoteService, String selfPeerId) {
+		this.octPath = octPath;
 		this.remoteService = remoteService;
 		this.selfPeerId = selfPeerId;
 	}
@@ -42,9 +42,9 @@ public class SelectionSyncListener implements ISelectionChangedListener {
 
 		ClientTextSelection selection = new ClientTextSelection(selfPeerId, start, end, isReversed);
 		try {
-			remoteService.updateTextSelection(path, new ClientTextSelection[] { selection });
+			remoteService.updateTextSelection(octPath, new ClientTextSelection[] { selection });
 		} catch (Exception e) {
-			LOG.warning("Failed to send text selection for " + path + ": " + e.getMessage());
+			LOG.warning("Failed to send text selection for " + octPath + ": " + e.getMessage());
 		}
 	}
 }
