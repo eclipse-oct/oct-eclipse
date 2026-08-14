@@ -4,7 +4,6 @@
  */
 package org.eclipse.oct.internal.ui.commands;
 
-import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.oct.internal.CollaborationInstance;
@@ -18,7 +17,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
  * collaboration session, allowing the user to copy the room ID or invitation
  * URL to the clipboard again.
  */
-public class ShowSessionInfoHandler extends AbstractHandler {
+public class ShowSessionInfoHandler extends OctSessionHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
@@ -40,8 +39,7 @@ public class ShowSessionInfoHandler extends AbstractHandler {
 	}
 
 	@Override
-	public boolean isEnabled() {
-		SessionService svc = SessionService.getInstance();
-		return svc != null && !svc.getAllInstances().isEmpty();
+	protected boolean computeEnabled() {
+		return hasOpenSession();
 	}
 }

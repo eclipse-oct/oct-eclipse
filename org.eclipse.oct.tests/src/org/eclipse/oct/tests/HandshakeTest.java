@@ -33,20 +33,21 @@ import org.junit.jupiter.api.TestInstance.Lifecycle;
  * End-to-end tests of the OCT handshake: host {@code createRoom} / guest
  * {@code joinRoom} / host {@code joinSessionRequest} / guest {@code init}.
  *
- * <p>Uses the real Node.js OCT server (via {@link OctTestServer}) and the real
+ * <p>
+ * Uses the real Node.js OCT server (via {@link OctTestServer}) and the real
  * native {@code oct-service-process} executable that the plugin ships, so the
  * exact same wire protocol described in
  * {@code open-collaboration-protocol/src/messages.ts} is exercised.
  */
 @TestInstance(Lifecycle.PER_CLASS)
 class HandshakeTest {
-
-	private String serverUrl;
+	
+	private static String serverUrl;
 	private final List<TestPeer> openPeers = new ArrayList<>();
 	private final List<IProject> openProjects = new ArrayList<>();
 
 	@BeforeAll
-	void startServer() {
+	static void startServer() {
 		serverUrl = OctTestServer.ensureStarted().serverUrl();
 	}
 
@@ -55,8 +56,8 @@ class HandshakeTest {
 		for (TestPeer p : openPeers) {
 			try {
 				p.close();
-			} catch (Exception ignored) {
-			}
+			} catch (Exception e) {
+				/* log */ }
 		}
 		openPeers.clear();
 		for (IProject project : openProjects) {
@@ -64,7 +65,7 @@ class HandshakeTest {
 		}
 		openProjects.clear();
 	}
-
+	
 	// OctTestServer is closed via its own JVM shutdown hook.
 
 	// ---------------------------------------------------------------
@@ -120,14 +121,12 @@ class HandshakeTest {
 		SessionData hostSession = host.createRoom(hostProject,
 				new Workspace(hostProject.getName(), new String[] { "testFolder" }));
 
-		Exception ex = assertThrows(Exception.class,
-				() -> guest.joinRoom(hostSession.roomId),
+		Exception ex = assertThrows(Exception.class, () -> guest.joinRoom(hostSession.roomId),
 				"guest joinRoom must fail when the host rejects the join request");
 		assertNotNull(ex, "join failure must propagate an exception");
 		assertTrue(policyCalled.get(), "host's join policy must have been consulted");
 		// And init must never arrive on a rejected join.
-		assertThrows(TimeoutException.class,
-				() -> guest.awaitInit(2, TimeUnit.SECONDS),
+		assertThrows(TimeoutException.class, () -> guest.awaitInit(2, TimeUnit.SECONDS),
 				"init must not arrive to a rejected guest");
 	}
 
@@ -158,10 +157,57 @@ class HandshakeTest {
 	@DisplayName("joining a non-existent room fails")
 	void joinNonExistentRoomFails() {
 		TestPeer guest = newGuest();
-		Exception ex = assertThrows(Exception.class,
-				() -> guest.joinRoom("this-room-does-not-exist"),
+		Exception ex = assertThrows(Exception.class, () -> guest.joinRoom("this-room-does-not-exist"),
 				"joining a bogus room id must fail");
 		assertNotNull(ex);
+	}
+
+	@Test
+	@DisplayName("a guest disconnecting notifies the host via peerLeft")
+	void guestDisconnectNotifiesHost() throws Exception {
+		IProject hostProject = createProject("handshake-leave-host");
+		TestPeer host = newHost();
+		TestPeer guest = newGuest();
+
+		Workspace ws = new Workspace(hostProject.getName(), new String[] { "testFolder" });
+		SessionData hostSession = host.createRoom(hostProject, ws);
+
+		guest.joinRoom(hostSession.roomId);
+		guest.awaitInit(30, TimeUnit.SECONDS);
+		// selfPeer() is populated by the peerInfo notification the server sends
+		// right after a successful join — needed below to confirm *which* peer
+		// left, since peerLeft only carries the departing peer's own info.
+		String guestPeerId = awaitSelfPeerId(guest);
+
+		// Simulate the guest disconnecting (e.g. closing Eclipse) by tearing down
+		// its service process: the underlying socket.io connection drops, the
+		// server's Peer.onDispose fires, and room-manager.leaveRoom() broadcasts
+		// "room/left" (relayed to the native client as "peerLeft") to the rest of
+		// the room — same effect as a graceful leave, just via a lost connection.
+		//
+		// Unlike a clean disconnect (explicit close frame), killing the process
+		// gives socket.io no TCP-level signal to react to immediately — it only
+		// notices via its ping/pong heartbeat once the peer stops responding,
+		// which by default can take up to ~45s (pingInterval 25s + pingTimeout
+		// 20s). Measured locally around ~30-35s, so the timeout below has margin
+		// above that rather than the tighter bounds used elsewhere in this suite.
+		guest.close();
+		openPeers.remove(guest);
+
+		var left = host.firstPeerLeft().get(60, TimeUnit.SECONDS);
+		assertNotNull(left, "host must receive a peerLeft notification when its guest disconnects");
+		assertEquals(guestPeerId, left.id, "peerLeft must identify the peer that actually disconnected");
+	}
+
+	private static String awaitSelfPeerId(TestPeer peer) throws Exception {
+		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+		while (peer.selfPeer() == null || peer.selfPeer().id == null) {
+			if (System.nanoTime() > deadline) {
+				throw new TimeoutException("Never received peerInfo for '" + peer.username() + "'");
+			}
+			Thread.sleep(50);
+		}
+		return peer.selfPeer().id;
 	}
 
 	// ---------------------------------------------------------------

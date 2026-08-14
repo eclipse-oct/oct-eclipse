@@ -33,6 +33,7 @@ import org.eclipse.oct.internal.protocol.FileSystemStat;
 import org.eclipse.oct.internal.protocol.FileType;
 import org.eclipse.oct.internal.rpc.FileSystemService;
 import org.eclipse.oct.internal.rpc.OCTService;
+import org.eclipse.oct.internal.util.OctPaths;
 
 /**
  * EFS FileStore for the "oct://" guest file system. Every operation is a
@@ -47,6 +48,27 @@ public class OctFileStore extends FileStore {
 	private final URI uri;
 	/** Cached IFileInfo — null means stale/not yet fetched. */
 	private volatile IFileInfo cachedInfo;
+
+	/**
+	 * Depth of {@link #suppressWrite(Runnable)} on this thread. A host save
+	 * arriving as {@code writeFile} must clear the guest editor's dirty flag
+	 * without echoing another write back to the host.
+	 */
+	private static final ThreadLocal<Integer> suppressWriteDepth = ThreadLocal.withInitial(() -> 0);
+
+	/** Run {@code action} so {@link #openOutputStream} skips the host RPC. */
+	public static void suppressWrite(Runnable action) {
+		suppressWriteDepth.set(suppressWriteDepth.get() + 1);
+		try {
+			action.run();
+		} finally {
+			suppressWriteDepth.set(suppressWriteDepth.get() - 1);
+		}
+	}
+
+	private static boolean isWriteSuppressed() {
+		return suppressWriteDepth.get() > 0;
+	}
 
 	public OctFileStore(URI uri) {
 		this.uri = normalize(uri);
@@ -196,6 +218,10 @@ public class OctFileStore extends FileStore {
 			@Override
 			public void close() throws IOException {
 				super.close();
+				if (isWriteSuppressed()) {
+					invalidateCache();
+					return;
+				}
 				byte[] data = toByteArray();
 				FileContent content = new FileContent(data);
 				try {
@@ -252,17 +278,8 @@ public class OctFileStore extends FileStore {
 
 	// ---- Helpers ----
 
-	/**
-	 * Convert this store's URI to the protocol path string. URI:
-	 * oct://sessionId/sharedRoot/relative/path Protocol path:
-	 * sharedRoot/relative/path (authority-less)
-	 */
 	private String toOctPath() {
-		String path = uri.getPath();
-		if (path.startsWith("/")) {
-			path = path.substring(1);
-		}
-		return path;
+		return OctPaths.fromOctUri(uri);
 	}
 
 	private String sessionId() {

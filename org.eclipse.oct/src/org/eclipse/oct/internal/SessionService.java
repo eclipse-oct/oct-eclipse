@@ -71,6 +71,21 @@ public class SessionService {
 		return instances.get(project);
 	}
 
+	/**
+	 * Associate an already-wired instance with a project so
+	 * {@link org.eclipse.oct.internal.fs.WorkspaceChangeListener} can find it.
+	 * Production {@link #sessionCreated} does this; tests that build a
+	 * {@link CollaborationInstance} via {@code TestPeer} must call this or
+	 * host saves never propagate.
+	 */
+	public void registerInstance(IProject project, CollaborationInstance instance) {
+		instances.put(project, instance);
+	}
+
+	public void unregisterInstance(IProject project) {
+		instances.remove(project);
+	}
+
 	public Map<IProject, CollaborationInstance> getAllInstances() {
 		return Map.copyOf(instances);
 	}
@@ -220,6 +235,7 @@ public class SessionService {
 
 		// Wire EditorManager
 		EditorManager em = new EditorManager((OCTService) process.getOctService(), project, isHost);
+		em.setPeerNameLookup(instance::peerDisplayName);
 		instance.setEditorManager(em);
 
 		instances.put(project, instance);

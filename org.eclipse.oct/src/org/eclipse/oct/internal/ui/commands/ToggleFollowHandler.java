@@ -14,9 +14,9 @@ import org.eclipse.oct.internal.SessionService;
  * Command handler that toggles the "follow" mode for a peer.
  *
  * <p>
- * Expects an optional command parameter {@value #PARAM_PEER_ID} carrying the
- * peer id to follow. When the parameter is absent (or matches the peer already
- * being followed) follow mode is stopped.
+ * Optional parameter {@value #PARAM_PEER_ID}: follow that peer, or stop if
+ * already following them. Without a parameter, a guest follows/unfollows the
+ * host and a host toggles {@code followGuestSelection}.
  *
  * <p>
  * Registered in plugin.xml against command
@@ -47,10 +47,18 @@ public class ToggleFollowHandler extends AbstractHandler {
 			return null;
 		}
 
-		String currentlyFollowing = editorManager.getFollowingPeerId();
+		if (peerId == null || peerId.isBlank()) {
+			if (instance.isHost) {
+				editorManager.setFollowGuestSelection(!editorManager.isFollowGuestSelection());
+			} else if (editorManager.getFollowingPeerId() != null) {
+				editorManager.stopFollowing();
+			} else if (instance.host != null) {
+				editorManager.followPeer(instance.host.id);
+			}
+			return null;
+		}
 
-		if (peerId == null || peerId.isBlank() || peerId.equals(currentlyFollowing)) {
-			// Toggle off (or no peer specified)
+		if (peerId.equals(editorManager.getFollowingPeerId())) {
 			editorManager.stopFollowing();
 		} else {
 			editorManager.followPeer(peerId);

@@ -86,9 +86,9 @@ public class OCTMessageHandler extends BaseMessageHandler {
 	@JsonNotification
 	public void peerInfo(Peer peer) {
 		if (collaborationInstance != null) {
-			collaborationInstance.identity = peer;
+			collaborationInstance.setIdentity(peer);
 		} else {
-			executeOnSetInstance.add(() -> collaborationInstance.identity = peer);
+			executeOnSetInstance.add(() -> collaborationInstance.setIdentity(peer));
 		}
 	}
 

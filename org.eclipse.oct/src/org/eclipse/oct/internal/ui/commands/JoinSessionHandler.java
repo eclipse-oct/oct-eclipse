@@ -4,7 +4,6 @@
  */
 package org.eclipse.oct.internal.ui.commands;
 
-import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.jface.dialogs.InputDialog;
@@ -16,7 +15,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 /**
  * Command handler for joining an OCT collaboration session.
  */
-public class JoinSessionHandler extends AbstractHandler {
+public class JoinSessionHandler extends OctSessionHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
@@ -34,7 +33,7 @@ public class JoinSessionHandler extends AbstractHandler {
 	}
 
 	@Override
-	public boolean isEnabled() {
-		return SessionService.getInstance() != null;
+	protected boolean computeEnabled() {
+		return SessionService.getInstance() != null && !hasOpenSession();
 	}
 }

@@ -101,6 +101,14 @@
                         <configuration>
                             <target>
                                 <echo message="Staging oct-service-process binaries into oct-bin/ (oct.project.path=${oct.project.path})"/>
+                                <!-- Wipe first: ServiceProcess prefers oct-service-process-&lt;platform&gt;
+                                     over the unsuffixed name. create:executable only emits
+                                     oct-service-process, so a leftover
+                                     oct-service-process-darwin-arm64 from an older build would
+                                     silently win at runtime and keep Eclipse on stale code. -->
+                                <delete>
+                                    <fileset dir="${project.basedir}/oct-bin" includes="oct-service-process*" erroronmissingdir="false"/>
+                                </delete>
                                 <copy todir="${project.basedir}/oct-bin" failonerror="true">
                                     <fileset dir="${oct.project.path}/packages/open-collaboration-service-process/bin"
                                              includes="oct-service-process*" erroronmissingdir="true"/>

@@ -21,11 +21,11 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.core.runtime.Path;
 import org.eclipse.oct.internal.WorkspaceFileSystemServiceHolder;
 import org.eclipse.oct.internal.protocol.FileContent;
 import org.eclipse.oct.internal.protocol.FileSystemStat;
 import org.eclipse.oct.internal.protocol.FileType;
+import org.eclipse.oct.internal.util.OctPaths;
 
 /**
  * Host-side workspace file system service. Provides file operations over the
@@ -160,21 +160,7 @@ public class WorkspaceFileSystemService implements WorkspaceFileSystemServiceHol
 	}
 
 	private IPath toRelativePath(String path) {
-		// Normalize leading slash
-		if (path.startsWith("/")) {
-			path = path.substring(1);
-		}
-		// Strip leading project name if present. This must also handle the case
-		// where the path is exactly the project name (the shared root folder
-		// itself), otherwise stat() of the root returns null and the guest fails
-		// to resolve the workspace folder.
-		String projectName = project.getName();
-		if (path.equals(projectName)) {
-			path = "";
-		} else if (path.startsWith(projectName + "/")) {
-			path = path.substring(projectName.length() + 1);
-		}
-		return new Path(path);
+		return OctPaths.toHostProjectRelativePath(path, project.getName());
 	}
 
 	private void createFolderHierarchy(IFolder folder, org.eclipse.core.runtime.IProgressMonitor monitor)

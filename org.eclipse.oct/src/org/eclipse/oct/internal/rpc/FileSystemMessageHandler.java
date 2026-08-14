@@ -80,6 +80,19 @@ public class FileSystemMessageHandler extends BaseMessageHandler {
 
 	@JsonRequest
 	public CompletableFuture<Void> writeFile(String path, FileContent content, String origin) {
+		if (collaborationInstance == null) {
+			return CompletableFuture.completedFuture(null);
+		}
+		EditorManager em = collaborationInstance.getEditorManager();
+		byte[] bytes = content != null ? content.content : null;
+
+		if (!collaborationInstance.isHost) {
+			// Host persisted the file. Accept it locally — never write back
+			// through the linked oct:// store (that would echo writeFile and
+			// race refreshLocal into Eclipse's overwrite dialog).
+			return CompletableFuture.runAsync(() -> collaborationInstance.acceptHostSave(path, bytes));
+		}
+
 		WorkspaceFileSystemService wfs = getWfs();
 		if (wfs == null) {
 			return CompletableFuture.completedFuture(null);
@@ -87,13 +100,14 @@ public class FileSystemMessageHandler extends BaseMessageHandler {
 		// Guest save (VS Code FileSystemProvider.writeFile → host). If the file
 		// is open in a dirty editor, save through the editor so dirty state is
 		// cleared instead of writing underneath it.
-		EditorManager em = collaborationInstance != null ? collaborationInstance.getEditorManager() : null;
 		if (em == null) {
 			return wfs.writeFile(path, content);
 		}
-		byte[] bytes = content != null ? content.content : null;
-		return CompletableFuture.supplyAsync(() -> em.saveIfOpen(path, bytes)).thenCompose(
-				handled -> handled ? CompletableFuture.<Void>completedFuture(null) : wfs.writeFile(path, content));
+		collaborationInstance.beginInboundWrite(path, origin);
+		return CompletableFuture.supplyAsync(() -> em.saveIfOpen(path, bytes))
+				.thenCompose(handled -> handled ? CompletableFuture.<Void>completedFuture(null)
+						: wfs.writeFile(path, content))
+				.whenComplete((r, e) -> collaborationInstance.endInboundWrite(path));
 	}
 
 	@JsonRequest

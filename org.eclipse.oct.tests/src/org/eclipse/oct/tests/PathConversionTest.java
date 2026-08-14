@@ -38,13 +38,13 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
 /**
- * Exercises host-side path conversion in
- * {@code WorkspaceFileSystemService.toRelativePath} via the real
- * {@code fileSystem/*} RPCs issued by a guest {@link TestPeer}.
+ * Integration tests: host-side {@link org.eclipse.oct.internal.util.OctPaths}
+ * conversion via the real {@code fileSystem/*} RPCs issued by a guest
+ * {@link TestPeer}. String-level cases live in {@link OctPathsTest}; IFile
+ * shapes in {@link OctPathsResourceTest}.
  *
- * <p>The Eclipse plugin uses the convention that a shared workspace advertises
- * the host project's name both as the workspace name and as its single shared
- * folder. Protocol paths therefore always take the shape
+ * <p>The Eclipse plugin advertises the host project's name as both workspace
+ * name and single shared folder. Protocol paths are
  * {@code <projectName>/<relative/path>}.
  */
 @TestInstance(Lifecycle.PER_CLASS)

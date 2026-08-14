@@ -10,7 +10,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -58,6 +60,20 @@ public class TestOCTMessageHandler extends OCTMessageHandler {
 	private final CompletableFuture<TextSelectionEvent> firstTextSelection = new CompletableFuture<>();
 	private final CompletableFuture<DocumentUpdateEvent> firstDocumentUpdate = new CompletableFuture<>();
 	private final CompletableFuture<String> firstEditorOpened = new CompletableFuture<>();
+	private final CompletableFuture<Peer> firstPeerLeft = new CompletableFuture<>();
+	/**
+	 * Every {@code awareness/updateDocument} received, in arrival order. A peer
+	 * that's already watching a path (e.g. because it seeded it, or a prior
+	 * openDocument/updateDocument call registered its own
+	 * YjsNormalizedTextDocument wrapper — see {@code CollaborationInstance
+	 * .getNormalizedDocument} in open-collaboration-service-process) can receive
+	 * several updates before the one a test actually cares about (e.g. the
+	 * initial content seed arrives before a live edit sent moments later), so
+	 * {@link #firstDocumentUpdate()} alone isn't always the right assertion
+	 * target — use this list (or {@code TestSync.awaitDocumentUpdate}) to find a
+	 * specific one.
+	 */
+	private final List<DocumentUpdateEvent> documentUpdates = new CopyOnWriteArrayList<>();
 
 	public TestOCTMessageHandler(String serverUrl, EventEmitter<CollaborationInstance> onSessionCreated,
 			String username) {
@@ -91,9 +107,19 @@ public class TestOCTMessageHandler extends OCTMessageHandler {
 		return firstDocumentUpdate;
 	}
 
+	/** Every {@code awareness/updateDocument} received so far, in arrival order. */
+	public List<DocumentUpdateEvent> documentUpdates() {
+		return documentUpdates;
+	}
+
 	/** Completes on the first {@code editorOpened} received. */
 	public CompletableFuture<String> firstEditorOpened() {
 		return firstEditorOpened;
+	}
+
+	/** Completes on the first {@code peerLeft} received. */
+	public CompletableFuture<Peer> firstPeerLeft() {
+		return firstPeerLeft;
 	}
 
 	// ---- Overridden hooks ----
@@ -128,6 +154,12 @@ public class TestOCTMessageHandler extends OCTMessageHandler {
 	}
 
 	@Override
+	public void peerLeft(Peer peer) {
+		firstPeerLeft.complete(peer);
+		super.peerLeft(peer);
+	}
+
+	@Override
 	public void updateTextSelection(String url, ClientTextSelection[] selections) {
 		firstTextSelection.complete(new TextSelectionEvent(url, selections));
 		super.updateTextSelection(url, selections);
@@ -135,7 +167,9 @@ public class TestOCTMessageHandler extends OCTMessageHandler {
 
 	@Override
 	public void updateDocument(String url, TextDocumentInsert[] updates) {
-		firstDocumentUpdate.complete(new DocumentUpdateEvent(url, updates));
+		DocumentUpdateEvent event = new DocumentUpdateEvent(url, updates);
+		documentUpdates.add(event);
+		firstDocumentUpdate.complete(event);
 		super.updateDocument(url, updates);
 	}
 

@@ -11,17 +11,18 @@ import java.util.concurrent.TimeoutException;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.oct.internal.CollaborationInstance;
+import org.eclipse.oct.internal.editor.EditorManager;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemService;
 import org.eclipse.oct.internal.protocol.InitData;
 import org.eclipse.oct.internal.protocol.Peer;
 import org.eclipse.oct.internal.protocol.SessionData;
 import org.eclipse.oct.internal.protocol.Workspace;
 import org.eclipse.oct.internal.rpc.BaseMessageHandler;
-import org.eclipse.oct.internal.rpc.FileSystemMessageHandler;
 import org.eclipse.oct.internal.rpc.FileSystemService;
 import org.eclipse.oct.internal.rpc.OCTService;
 import org.eclipse.oct.internal.rpc.ServiceProcess;
 import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.swt.widgets.Display;
 
 /**
  * Wraps a real {@link ServiceProcess} (spawning the shipped native
@@ -30,13 +31,16 @@ import org.eclipse.oct.internal.util.EventEmitter;
  * so tests can drive a peer end-to-end over the real OCT protocol.
  *
  * <p>For host peers a real {@link CollaborationInstance} is wired to a
- * {@link WorkspaceFileSystemService} backed by a temporary {@link IProject}, so
- * that inbound {@code fileSystem/*} RPCs from the guest are answered by the
- * production path-conversion code against real files on disk. For guest peers
- * we deliberately skip constructing the CollaborationInstance to avoid
- * triggering the linked-folder / workbench code paths (see
- * {@code CollaborationInstance.initializeSharedFolders} and
- * {@code EditorManager}), which are out of scope for this suite.
+ * {@link WorkspaceFileSystemService} and a real {@link EditorManager} (exactly
+ * like production {@code SessionService.sessionCreated}) backed by a temporary
+ * {@link IProject}, so that inbound {@code fileSystem/*} RPCs from the guest
+ * are answered by the production path-conversion code against real files on
+ * disk, and a real {@link org.eclipse.ui.IEditorPart} opened on the host's
+ * project exercises the production {@code DocumentSyncListener}/seed-sync code
+ * path. For guest peers we deliberately skip constructing the
+ * CollaborationInstance to avoid triggering the linked-folder / workbench code
+ * paths (see {@code CollaborationInstance.initializeSharedFolders}), which are
+ * out of scope for this suite.
  */
 public final class TestPeer implements AutoCloseable {
 
@@ -48,20 +52,21 @@ public final class TestPeer implements AutoCloseable {
 	private final String username;
 	private final EventEmitter<CollaborationInstance> onSessionCreated = new EventEmitter<>();
 	private final TestOCTMessageHandler octHandler;
-	private final FileSystemMessageHandler fsHandler;
+	private final TestFileSystemMessageHandler fsHandler;
 	private final ServiceProcess serviceProcess;
 	private final BaseMessageHandler.BaseRemoteInterface remoteProxy;
 
 	private IProject project;
 	private WorkspaceFileSystemService workspaceFs;
 	private CollaborationInstance instance;
+	private EditorManager editorManager;
 	private SessionData sessionData;
 
 	public TestPeer(String serverUrl, String username, Role role) {
 		this.role = role;
 		this.username = username;
 		this.octHandler = new TestOCTMessageHandler(serverUrl, onSessionCreated, username);
-		this.fsHandler = new FileSystemMessageHandler(serverUrl, onSessionCreated);
+		this.fsHandler = new TestFileSystemMessageHandler(serverUrl, onSessionCreated);
 		// Bypass AuthenticationService/Equinox secure storage: tests always perform
 		// a fresh simple-login against the local server, so there is never a saved
 		// token to look up, and secure storage can otherwise prompt for a master
@@ -158,8 +163,30 @@ public final class TestPeer implements AutoCloseable {
 		return octHandler.firstDocumentUpdate();
 	}
 
+	/** Every {@code awareness/updateDocument} received so far, in arrival order. */
+	public java.util.List<TestOCTMessageHandler.DocumentUpdateEvent> documentUpdates() {
+		return octHandler.documentUpdates();
+	}
+
 	public CompletableFuture<String> firstEditorOpened() {
 		return octHandler.firstEditorOpened();
+	}
+
+	public CompletableFuture<Peer> firstPeerLeft() {
+		return octHandler.firstPeerLeft();
+	}
+
+	public CompletableFuture<TestFileSystemMessageHandler.WriteFileEvent> firstWriteFile() {
+		return fsHandler.firstWriteFile();
+	}
+
+	public java.util.List<TestFileSystemMessageHandler.WriteFileEvent> writeFiles() {
+		return fsHandler.writeFiles();
+	}
+
+	/** The real, production {@link EditorManager} wired for host peers (null for guests). */
+	public EditorManager editorManager() {
+		return editorManager;
 	}
 
 	// ---- Wiring ----
@@ -167,7 +194,33 @@ public final class TestPeer implements AutoCloseable {
 	private void wireCollaborationInstance() {
 		this.instance = new CollaborationInstance(remoteProxy, project, sessionData, /* isHost */ true);
 		this.instance.setWorkspaceFileSystem(workspaceFs);
+		// Mirrors production SessionService.sessionCreated: a real EditorManager
+		// backs every session so partOpened/DocumentSyncListener/seed-sync gating
+		// (EditorManager.confirmSeedThenEnableUpdates) run for real, not just the
+		// raw octService() RPCs exercised elsewhere in this suite.
+		this.editorManager = new EditorManager(octService(), project, /* isHost */ true);
+		this.editorManager.setPeerNameLookup(instance::peerDisplayName);
+		this.instance.setEditorManager(editorManager);
 		onSessionCreated.fire(instance);
+		// EditorManager's constructor registers its IPartListener2 via
+		// Display.asyncExec(...). Under the PDE "useUIHarness" test runner, JUnit
+		// test methods run directly on the SWT UI thread (unlike in production,
+		// where SessionService.sessionCreated runs on a background JSON-RPC
+		// reader thread while the UI thread's event loop spins independently and
+		// freely). Since we're already on that same thread here, the queued
+		// asyncExec cannot run until *we* yield back to the event loop — which
+		// would never happen before a test tries to open an editor. Pump the
+		// queue once so the listener is registered before returning.
+		Display display = Display.getDefault();
+		if (display != null && display.getThread() == Thread.currentThread()) {
+			// Bounded, not an unconditional drain-until-empty: some workbench
+			// activity (redraws, etc.) can keep readAndDispatch() returning true
+			// indefinitely, which would hang the test instead of just flushing
+			// the one queued asyncExec we actually care about.
+			for (int i = 0; i < 50 && display.readAndDispatch(); i++) {
+				// drain
+			}
+		}
 	}
 
 	// ---- Lifecycle ----
@@ -182,11 +235,12 @@ public final class TestPeer implements AutoCloseable {
 		}
 		if (instance != null) {
 			try {
-				instance.dispose();
+				instance.dispose(); // also disposes editorManager (part listener + per-editor state)
 			} catch (Exception ignored) {
 			}
 			instance = null;
 		}
+		editorManager = null;
 		// Project deletion is left to the test / EclipseTestProjects so callers can
 		// inspect the workspace state after the peer is closed if needed.
 		project = null;

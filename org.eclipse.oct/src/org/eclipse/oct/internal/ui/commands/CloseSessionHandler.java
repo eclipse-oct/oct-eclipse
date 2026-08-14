@@ -4,7 +4,6 @@
  */
 package org.eclipse.oct.internal.ui.commands;
 
-import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.resources.IProject;
@@ -17,7 +16,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 /**
  * Command handler for closing the current OCT session.
  */
-public class CloseSessionHandler extends AbstractHandler {
+public class CloseSessionHandler extends OctSessionHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
@@ -58,8 +57,7 @@ public class CloseSessionHandler extends AbstractHandler {
 	}
 
 	@Override
-	public boolean isEnabled() {
-		SessionService svc = SessionService.getInstance();
-		return svc != null && !svc.getAllInstances().isEmpty();
+	protected boolean computeEnabled() {
+		return hasOpenSession();
 	}
 }

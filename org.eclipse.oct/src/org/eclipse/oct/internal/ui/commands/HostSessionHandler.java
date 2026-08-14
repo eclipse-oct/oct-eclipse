@@ -7,7 +7,6 @@ package org.eclipse.oct.internal.ui.commands;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.resources.IProject;
@@ -22,7 +21,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 /**
  * Command handler for hosting an OCT collaboration session.
  */
-public class HostSessionHandler extends AbstractHandler {
+public class HostSessionHandler extends OctSessionHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
@@ -67,7 +66,7 @@ public class HostSessionHandler extends AbstractHandler {
 	}
 
 	@Override
-	public boolean isEnabled() {
-		return SessionService.getInstance() != null;
+	protected boolean computeEnabled() {
+		return SessionService.getInstance() != null && !hasOpenSession();
 	}
 }
