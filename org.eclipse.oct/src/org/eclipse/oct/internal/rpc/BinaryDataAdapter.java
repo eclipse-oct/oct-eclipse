@@ -7,9 +7,9 @@ package org.eclipse.oct.internal.rpc;
 import java.io.IOException;
 import java.util.Base64;
 
-import org.eclipse.oct.internal.protocol.FileChangeEventType;
-import org.eclipse.oct.internal.protocol.FileContent;
-import org.eclipse.oct.internal.protocol.FileType;
+import org.eclipse.oct.protocol.FileChangeEventType;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.protocol.FileType;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

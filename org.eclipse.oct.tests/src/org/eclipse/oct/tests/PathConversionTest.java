@@ -19,12 +19,12 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.oct.internal.protocol.FileContent;
-import org.eclipse.oct.internal.protocol.FileSystemStat;
-import org.eclipse.oct.internal.protocol.FileType;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.Workspace;
 import org.eclipse.oct.internal.rpc.FileSystemService;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.protocol.FileSystemStat;
+import org.eclipse.oct.protocol.FileType;
+import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.tests.support.EclipseTestProjects;
 import org.eclipse.oct.tests.support.OctTestServer;
 import org.eclipse.oct.tests.support.TestPeer;
@@ -38,7 +38,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
 /**
- * Integration tests: host-side {@link org.eclipse.oct.internal.util.OctPaths}
+ * Integration tests: host-side {@link org.eclipse.oct.util.OctPaths}
  * conversion via the real {@code fileSystem/*} RPCs issued by a guest
  * {@link TestPeer}. String-level cases live in {@link OctPathsTest}; IFile
  * shapes in {@link OctPathsResourceTest}.

@@ -28,12 +28,12 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.oct.internal.CollaborationInstance;
 import org.eclipse.oct.internal.SessionService;
-import org.eclipse.oct.internal.protocol.FileContent;
-import org.eclipse.oct.internal.protocol.FileSystemStat;
-import org.eclipse.oct.internal.protocol.FileType;
 import org.eclipse.oct.internal.rpc.FileSystemService;
 import org.eclipse.oct.internal.rpc.OCTService;
-import org.eclipse.oct.internal.util.OctPaths;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.protocol.FileSystemStat;
+import org.eclipse.oct.protocol.FileType;
+import org.eclipse.oct.util.OctPaths;
 
 /**
  * EFS FileStore for the "oct://" guest file system. Every operation is a

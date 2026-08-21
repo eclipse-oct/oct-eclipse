@@ -10,7 +10,7 @@ import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.lsp4j.jsonrpc.Endpoint;
 import org.eclipse.oct.internal.CollaborationInstance;
-import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.oct.util.EventEmitter;
 
 /**
  * Abstract base for message handlers. Holds a reference to the

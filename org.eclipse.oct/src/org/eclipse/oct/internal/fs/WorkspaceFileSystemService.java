@@ -21,11 +21,10 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.oct.internal.WorkspaceFileSystemServiceHolder;
-import org.eclipse.oct.internal.protocol.FileContent;
-import org.eclipse.oct.internal.protocol.FileSystemStat;
-import org.eclipse.oct.internal.protocol.FileType;
-import org.eclipse.oct.internal.util.OctPaths;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.protocol.FileSystemStat;
+import org.eclipse.oct.protocol.FileType;
+import org.eclipse.oct.util.OctPaths;
 
 /**
  * Host-side workspace file system service. Provides file operations over the

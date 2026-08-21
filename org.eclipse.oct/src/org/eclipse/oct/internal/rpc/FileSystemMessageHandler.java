@@ -10,14 +10,14 @@ import java.util.concurrent.CompletableFuture;
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification;
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.lsp4j.jsonrpc.services.JsonSegment;
+import org.eclipse.oct.editor.EditorManager;
 import org.eclipse.oct.internal.CollaborationInstance;
-import org.eclipse.oct.internal.editor.EditorManager;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemService;
-import org.eclipse.oct.internal.protocol.FileChangeEvent;
-import org.eclipse.oct.internal.protocol.FileContent;
-import org.eclipse.oct.internal.protocol.FileSystemStat;
-import org.eclipse.oct.internal.protocol.FileType;
-import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.oct.protocol.FileChangeEvent;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.protocol.FileSystemStat;
+import org.eclipse.oct.protocol.FileType;
+import org.eclipse.oct.util.EventEmitter;
 
 /**
  * Handles inbound file system RPC calls from the service process.

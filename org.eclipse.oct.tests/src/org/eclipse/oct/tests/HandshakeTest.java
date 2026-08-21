@@ -16,9 +16,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.core.resources.IProject;
-import org.eclipse.oct.internal.protocol.InitData;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.Workspace;
+import org.eclipse.oct.protocol.InitData;
+import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.tests.support.EclipseTestProjects;
 import org.eclipse.oct.tests.support.OctTestServer;
 import org.eclipse.oct.tests.support.TestPeer;
@@ -41,7 +41,7 @@ import org.junit.jupiter.api.TestInstance.Lifecycle;
  */
 @TestInstance(Lifecycle.PER_CLASS)
 class HandshakeTest {
-	
+
 	private static String serverUrl;
 	private final List<TestPeer> openPeers = new ArrayList<>();
 	private final List<IProject> openProjects = new ArrayList<>();
@@ -65,7 +65,7 @@ class HandshakeTest {
 		}
 		openProjects.clear();
 	}
-	
+
 	// OctTestServer is closed via its own JVM shutdown hook.
 
 	// ---------------------------------------------------------------

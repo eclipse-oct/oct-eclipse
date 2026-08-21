@@ -19,14 +19,14 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.eclipse.oct.internal.CollaborationInstance;
-import org.eclipse.oct.internal.protocol.AuthMetadata;
-import org.eclipse.oct.internal.protocol.ClientTextSelection;
-import org.eclipse.oct.internal.protocol.InitData;
-import org.eclipse.oct.internal.protocol.Peer;
-import org.eclipse.oct.internal.protocol.TextDocumentInsert;
-import org.eclipse.oct.internal.protocol.User;
 import org.eclipse.oct.internal.rpc.OCTMessageHandler;
-import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.oct.protocol.AuthMetadata;
+import org.eclipse.oct.protocol.ClientTextSelection;
+import org.eclipse.oct.protocol.InitData;
+import org.eclipse.oct.protocol.Peer;
+import org.eclipse.oct.protocol.TextDocumentInsert;
+import org.eclipse.oct.protocol.User;
+import org.eclipse.oct.util.EventEmitter;
 
 /**
  * Test-only {@link OCTMessageHandler} that replaces the two UI-coupled hooks

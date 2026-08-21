@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.TitleAreaDialog;
-import org.eclipse.oct.internal.protocol.FormAuthProviderField;
+import org.eclipse.oct.protocol.FormAuthProviderField;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;

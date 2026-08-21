@@ -10,18 +10,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.eclipse.core.resources.IProject;
+import org.eclipse.oct.editor.EditorManager;
 import org.eclipse.oct.internal.CollaborationInstance;
-import org.eclipse.oct.internal.editor.EditorManager;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemService;
-import org.eclipse.oct.internal.protocol.InitData;
-import org.eclipse.oct.internal.protocol.Peer;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.Workspace;
 import org.eclipse.oct.internal.rpc.BaseMessageHandler;
+import org.eclipse.oct.internal.rpc.FileSystemMessageHandler;
 import org.eclipse.oct.internal.rpc.FileSystemService;
 import org.eclipse.oct.internal.rpc.OCTService;
 import org.eclipse.oct.internal.rpc.ServiceProcess;
-import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.oct.protocol.InitData;
+import org.eclipse.oct.protocol.Peer;
+import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.Workspace;
+import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.swt.widgets.Display;
 
 /**
@@ -87,7 +88,7 @@ public final class TestPeer implements AutoCloseable {
 	}
 
 	public void setJoinPolicy(java.util.function.Function<
-			org.eclipse.oct.internal.protocol.User, Boolean> policy) {
+			org.eclipse.oct.protocol.User, Boolean> policy) {
 		octHandler.setJoinPolicy(policy);
 	}
 
@@ -198,7 +199,7 @@ public final class TestPeer implements AutoCloseable {
 		// backs every session so partOpened/DocumentSyncListener/seed-sync gating
 		// (EditorManager.confirmSeedThenEnableUpdates) run for real, not just the
 		// raw octService() RPCs exercised elsewhere in this suite.
-		this.editorManager = new EditorManager(octService(), project, /* isHost */ true);
+		this.editorManager = new EditorManager(octService(), project, /* isHost */ true, instance.peerColors);
 		this.editorManager.setPeerNameLookup(instance::peerDisplayName);
 		this.instance.setEditorManager(editorManager);
 		onSessionCreated.fire(instance);

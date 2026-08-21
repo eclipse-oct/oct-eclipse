@@ -9,9 +9,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.eclipse.oct.internal.CollaborationInstance;
-import org.eclipse.oct.internal.protocol.FileContent;
 import org.eclipse.oct.internal.rpc.FileSystemMessageHandler;
-import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.util.EventEmitter;
 
 /**
  * Records inbound {@code fileSystem/writeFile} requests so tests can assert

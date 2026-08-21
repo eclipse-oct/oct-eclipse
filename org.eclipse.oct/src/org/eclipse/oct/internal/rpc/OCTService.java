@@ -8,10 +8,10 @@ import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.lsp4j.jsonrpc.services.JsonNotification;
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
-import org.eclipse.oct.internal.protocol.ClientTextSelection;
-import org.eclipse.oct.internal.protocol.FileContent;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.Workspace;
+import org.eclipse.oct.protocol.ClientTextSelection;
+import org.eclipse.oct.protocol.FileContent;
+import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.Workspace;
 
 /**
  * Remote interface for the OCT service process. Matches the protocol methods in
@@ -41,5 +41,5 @@ public interface OCTService extends BaseMessageHandler.BaseRemoteInterface {
 	void updateTextSelection(String path, ClientTextSelection[] textSelections);
 
 	@JsonNotification(value = "awareness/updateDocument")
-	void updateDocument(String path, org.eclipse.oct.internal.protocol.TextDocumentInsert[] updates);
+	void updateDocument(String path, org.eclipse.oct.protocol.TextDocumentInsert[] updates);
 }

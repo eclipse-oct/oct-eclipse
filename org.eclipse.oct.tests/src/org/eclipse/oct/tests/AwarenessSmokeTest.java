@@ -13,10 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.core.resources.IProject;
-import org.eclipse.oct.internal.protocol.ClientTextSelection;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.TextDocumentInsert;
-import org.eclipse.oct.internal.protocol.Workspace;
+import org.eclipse.oct.protocol.ClientTextSelection;
+import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.TextDocumentInsert;
+import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.tests.support.EclipseTestProjects;
 import org.eclipse.oct.tests.support.OctTestServer;
 import org.eclipse.oct.tests.support.TestOCTMessageHandler;

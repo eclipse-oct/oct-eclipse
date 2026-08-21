@@ -8,10 +8,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.function.Predicate;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
-import org.eclipse.oct.internal.protocol.FileContent;
+import org.eclipse.oct.protocol.FileContent;
 import org.eclipse.oct.tests.support.TestOCTMessageHandler.DocumentUpdateEvent;
 
 /**

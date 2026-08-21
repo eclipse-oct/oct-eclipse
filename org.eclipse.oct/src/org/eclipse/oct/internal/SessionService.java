@@ -6,8 +6,10 @@ package org.eclipse.oct.internal;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,6 +20,7 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.resources.WorkspaceJob;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
@@ -25,18 +28,18 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.oct.editor.EditorManager;
 import org.eclipse.oct.internal.auth.AuthenticationService;
-import org.eclipse.oct.internal.editor.EditorManager;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemService;
-import org.eclipse.oct.internal.prefs.OCTSettings;
-import org.eclipse.oct.internal.protocol.SessionData;
-import org.eclipse.oct.internal.protocol.Workspace;
 import org.eclipse.oct.internal.rpc.FileSystemMessageHandler;
 import org.eclipse.oct.internal.rpc.OCTMessageHandler;
 import org.eclipse.oct.internal.rpc.OCTService;
 import org.eclipse.oct.internal.rpc.ServiceProcess;
-import org.eclipse.oct.internal.ui.SessionCreatedDialog;
-import org.eclipse.oct.internal.util.EventEmitter;
+import org.eclipse.oct.prefs.OCTSettings;
+import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.Workspace;
+import org.eclipse.oct.ui.SessionCreatedDialog;
+import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.PlatformUI;
 
@@ -51,6 +54,7 @@ public class SessionService {
 	private final Map<IProject, ServiceProcess> processes = new HashMap<>();
 	private final Map<IProject, CollaborationInstance> instances = new HashMap<>();
 	private final List<IProject> tempProjectsToDelete = new ArrayList<>();
+	private final Set<IProject> pendingRoomCreations = new HashSet<>();
 
 	public final EventEmitter<CollaborationInstance> onSessionCreated = new EventEmitter<>();
 	public final EventEmitter<IProject> onSessionClosed = new EventEmitter<>();
@@ -91,7 +95,10 @@ public class SessionService {
 	}
 
 	public void createRoom(Workspace workspace, IProject project) {
-		if (instances.containsKey(project)) {
+		if (instances.containsKey(project) || !pendingRoomCreations.add(project)) {
+			// Either a session is already open, or a creation request for this
+			// project is already in flight (e.g. the user double-clicked "Host
+			// Session" before the async room creation completed).
 			return;
 		}
 
@@ -122,6 +129,8 @@ public class SessionService {
 							.asyncExec(() -> MessageDialog.openError(
 									PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(), "OCT Error",
 									"Failed to create room. " + errMsg));
+				} finally {
+					pendingRoomCreations.remove(project);
 				}
 				return Status.OK_STATUS;
 			}
@@ -204,6 +213,24 @@ public class SessionService {
 		}
 
 		onSessionClosed.fire(project);
+		if (tempProjectsToDelete.remove(project)) {
+			deleteTempProject(project);
+		}
+	}
+
+	private void deleteTempProject(IProject project) {
+		WorkspaceJob job = new WorkspaceJob("Deleting Project: " + project.getName()) {
+			@Override
+			public IStatus runInWorkspace(IProgressMonitor monitor) throws CoreException {
+				if (project.exists()) {
+					project.delete(true, true, monitor);
+				}
+				return Status.OK_STATUS;
+			}
+		};
+		job.setRule(project);
+		job.setUser(false);
+		job.schedule();
 	}
 
 	public void projectClosed(IProject project) {
@@ -234,7 +261,7 @@ public class SessionService {
 		instance.setWorkspaceFileSystem(wfs);
 
 		// Wire EditorManager
-		EditorManager em = new EditorManager((OCTService) process.getOctService(), project, isHost);
+		EditorManager em = new EditorManager((OCTService) process.getOctService(), project, isHost, instance.peerColors);
 		em.setPeerNameLookup(instance::peerDisplayName);
 		instance.setEditorManager(em);
 

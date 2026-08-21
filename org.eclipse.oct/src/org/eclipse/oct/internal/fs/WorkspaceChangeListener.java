@@ -20,11 +20,11 @@ import org.eclipse.core.resources.IResourceDeltaVisitor;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.oct.internal.CollaborationInstance;
 import org.eclipse.oct.internal.SessionService;
-import org.eclipse.oct.internal.protocol.FileChange;
-import org.eclipse.oct.internal.protocol.FileChangeEvent;
-import org.eclipse.oct.internal.protocol.FileChangeEventType;
 import org.eclipse.oct.internal.rpc.FileSystemService;
-import org.eclipse.oct.internal.util.OctPaths;
+import org.eclipse.oct.protocol.FileChange;
+import org.eclipse.oct.protocol.FileChangeEvent;
+import org.eclipse.oct.protocol.FileChangeEventType;
+import org.eclipse.oct.util.OctPaths;
 
 /**
  * Listens for local workspace changes and broadcasts them to guests. Matches

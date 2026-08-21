@@ -29,19 +29,18 @@
 
    <!-- ===== Handlers ===== -->
    <extension point="org.eclipse.ui.handlers">
-      <handler commandId="org.eclipse.oct.hostSession" class="org.eclipse.oct.internal.ui.commands.HostSessionHandler"/>
-      <handler commandId="org.eclipse.oct.joinSession" class="org.eclipse.oct.internal.ui.commands.JoinSessionHandler"/>
-      <handler commandId="org.eclipse.oct.closeSession" class="org.eclipse.oct.internal.ui.commands.CloseSessionHandler"/>
-      <handler commandId="org.eclipse.oct.logout" class="org.eclipse.oct.internal.ui.commands.LogoutHandler"/>
-      <handler commandId="org.eclipse.oct.toggleFollow" class="org.eclipse.oct.internal.ui.commands.ToggleFollowHandler"/>
-      <handler commandId="org.eclipse.oct.showSessionInfo" class="org.eclipse.oct.internal.ui.commands.ShowSessionInfoHandler"/>
+      <handler commandId="org.eclipse.oct.hostSession" class="org.eclipse.oct.ui.commands.HostSessionHandler"/>
+      <handler commandId="org.eclipse.oct.joinSession" class="org.eclipse.oct.ui.commands.JoinSessionHandler"/>
+      <handler commandId="org.eclipse.oct.closeSession" class="org.eclipse.oct.ui.commands.CloseSessionHandler"/>
+      <handler commandId="org.eclipse.oct.logout" class="org.eclipse.oct.ui.commands.LogoutHandler"/>
+      <handler commandId="org.eclipse.oct.showSessionInfo" class="org.eclipse.oct.ui.commands.ShowSessionInfoHandler"/>
    </extension>
 
    <!-- ===== Menu / Toolbar contributions ===== -->
    <extension point="org.eclipse.ui.menus">
        <!-- OCT Session View toolbar -->
        <menuContribution locationURI="toolbar:org.eclipse.oct.sessionView">
-          <command commandId="org.eclipse.oct.hostSession" icon="icons/share.png" tooltip="Host Session" style="push"/>
+          <command commandId="org.eclipse.oct.hostSession" icon="icons/hosting.png" tooltip="Host Session" style="push"/>
           <command commandId="org.eclipse.oct.joinSession" icon="icons/collab.png" tooltip="Join Session" style="push"/>
           <separator name="org.eclipse.oct.sessionViewSep1"/>
            <command commandId="org.eclipse.oct.showSessionInfo" icon="platform:/plugin/org.eclipse.ui/icons/full/obj16/info_tsk.png" tooltip="Show Session Info / Copy Invitation" style="push"/>
@@ -54,7 +53,7 @@
                id="org.eclipse.oct.statusbar.toolbar"
                label="OCT">
             <control
-                  class="org.eclipse.oct.internal.ui.StatusBarContribution"
+                  class="org.eclipse.oct.ui.StatusBarContribution"
                   id="org.eclipse.oct.statusBar.icon">
             </control>
          </toolbar>
@@ -86,17 +85,17 @@
 
    <!-- ===== Views ===== -->
    <extension point="org.eclipse.ui.views">
-      <view id="org.eclipse.oct.sessionView" name="OCT Session" class="org.eclipse.oct.internal.ui.SessionView" icon="icons/view_icon.png" category="org.eclipse.ui" allowMultiple="false"/>
+      <view id="org.eclipse.oct.sessionView" name="OCT Session" class="org.eclipse.oct.ui.SessionView" icon="icons/view_icon.png" category="org.eclipse.ui" allowMultiple="false"/>
    </extension>
 
    <!-- ===== Preference Pages ===== -->
    <extension point="org.eclipse.ui.preferencePages">
-      <page id="org.eclipse.oct.prefs" name="Open Collaboration Tools" class="org.eclipse.oct.internal.prefs.OCTPreferencePage"/>
+      <page id="org.eclipse.oct.prefs" name="Open Collaboration Tools" class="org.eclipse.oct.prefs.OCTPreferencePage"/>
    </extension>
 
    <!-- ===== Preference Initializer ===== -->
    <extension point="org.eclipse.core.runtime.preferences">
-      <initializer class="org.eclipse.oct.internal.prefs.OCTPreferenceInitializer"/>
+      <initializer class="org.eclipse.oct.prefs.OCTPreferenceInitializer"/>
    </extension>
 
    <!-- ===== Guest EFS provider (scheme "oct") ===== -->
