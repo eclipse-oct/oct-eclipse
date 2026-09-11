@@ -12,7 +12,7 @@
     <description>Eclipse plugin for Open Collaboration Tools</description>
 
     <properties>
-        <tycho.version>4.0.8</tycho.version>
+        <tycho.version>5.0.4</tycho.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>

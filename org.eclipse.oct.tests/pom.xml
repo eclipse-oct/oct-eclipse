@@ -31,7 +31,7 @@
                          populates an ImageRegistry on start, so we launch the workbench harness.
                          Tests themselves are pure JUnit 5 and never touch SWT. -->
                     <useUIHarness>true</useUIHarness>
-                    <providerHint>junit5</providerHint>
+                    <providerHint>junit6</providerHint>
                     <trimStackTrace>false</trimStackTrace>
                     <forkedProcessTimeoutInSeconds>300</forkedProcessTimeoutInSeconds>
                     <argLine>${oct.tests.argLine}</argLine>
@@ -41,7 +41,10 @@
                         <oct.project.path>${oct.project.path}</oct.project.path>
                     </systemProperties>
                     <dependencies>
-                        <!-- Eclipse 2026-03 ships JUnit 5 with Maven-style bundle names. -->
+                        <!-- Version left at 0.0.0: org.eclipse.oct.target pins these to the
+                             JUnit 6 (6.0.3) set explicitly, so this unconstrained range
+                             resolves unambiguously. See org.eclipse.oct.target for why an
+                             explicit pin is required. -->
                         <dependency>
                             <type>eclipse-plugin</type>
                             <artifactId>junit-jupiter-engine</artifactId>

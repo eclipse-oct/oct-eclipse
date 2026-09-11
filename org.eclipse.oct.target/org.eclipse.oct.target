@@ -2,7 +2,7 @@
 <?pde version="3.8"?>
 <target name="org.eclipse.oct.target" sequenceNumber="1">
     <locations>
-        <!-- Eclipse 2025-03 release repository -->
+        <!-- Eclipse 2026-03 release repository -->
         <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
             <unit id="org.eclipse.platform.feature.group" version="0.0.0"/>
             <unit id="org.eclipse.rcp.feature.group" version="0.0.0"/>
@@ -15,13 +15,14 @@
             <unit id="org.eclipse.ui.ide" version="0.0.0"/>
             <unit id="org.eclipse.equinox.security" version="0.0.0"/>
             <unit id="org.eclipse.lsp4j.jsonrpc" version="0.0.0"/>
-            <unit id="junit-jupiter-api" version="0.0.0"/>
-            <unit id="junit-jupiter-engine" version="0.0.0"/>
-            <unit id="junit-jupiter-params" version="0.0.0"/>
-            <unit id="junit-platform-commons" version="0.0.0"/>
-            <unit id="junit-platform-engine" version="0.0.0"/>
-            <unit id="junit-platform-launcher" version="0.0.0"/>
-            <unit id="org.opentest4j" version="0.0.0"/>
+            <!-- Eclipse 2026-03 has both Junit 5 and 6. -->
+            <unit id="junit-jupiter-api" version="6.0.3"/>
+            <unit id="junit-jupiter-engine" version="6.0.3"/>
+            <unit id="junit-jupiter-params" version="6.0.3"/>
+            <unit id="junit-platform-commons" version="6.0.3"/>
+            <unit id="junit-platform-engine" version="6.0.3"/>
+            <unit id="junit-platform-launcher" version="6.0.3"/>
+            <unit id="org.opentest4j" version="1.3.0"/>
             <repository location="https://download.eclipse.org/releases/2026-03/"/>
         </location>
 
@@ -36,7 +37,7 @@
     </locations>
     <launcherArgs>
         <programArgs>-console -consolelog</programArgs>
-        <vmArgs>-Xms512m -Xmx1024m</vmArgs>
+        <vmArgs>-Xmx1024m</vmArgs>
     </launcherArgs>
     <jreContainer>org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-21</jreContainer>
 </target>

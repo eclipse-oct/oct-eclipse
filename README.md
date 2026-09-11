@@ -105,14 +105,16 @@ oct-eclipse/
   pom.xml                           Parent POM (Tycho)
   org.eclipse.oct/                  Main plugin bundle
     src/                            Java sources (M1–M4)
-      org/eclipse/oct/internal/
+      org/eclipse/oct/
         protocol/     POJOs (Workspace, SessionData, Peer, FileContent, …)
-        rpc/          ServiceProcess, adapters, OCTService, FileSystemService, handlers
-        fs/           OctFileSystem (EFS guest), WorkspaceFileSystemService (host)
         editor/       EditorManager, DocumentSyncListener, PeerAnnotation, drawing strategies
-        auth/         AuthenticationService + secure storage
         ui/           SessionView, StatusBarContribution, command handlers
         prefs/        OCTSettings, OCTPreferencePage
+        util/         EventEmitter, OctPaths
+        internal/
+          rpc/        ServiceProcess, adapters, OCTService, FileSystemService, handlers
+          fs/         OctFileSystem (EFS guest), WorkspaceFileSystemService (host)
+          auth/       AuthenticationService + secure storage
     lib/              Third-party jars (lsp4j, jackson, msgpack)
     bin/              oct-service-process executables (per platform)
     META-INF/MANIFEST.MF
