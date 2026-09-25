@@ -27,10 +27,14 @@ import org.eclipse.oct.internal.SessionService;
 import org.eclipse.oct.protocol.Peer;
 import org.eclipse.oct.util.OctPaths;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Font;
+import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.RGB;
+import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
@@ -38,6 +42,7 @@ import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.handlers.IHandlerService;
 import org.eclipse.ui.menus.CommandContributionItem;
 import org.eclipse.ui.menus.CommandContributionItemParameter;
 import org.eclipse.ui.part.ViewPart;
@@ -55,7 +60,7 @@ public class SessionView extends ViewPart {
 	private Composite sessionPage;
 	private Label roleLabel;
 	private Label titleLabel;
-	private org.eclipse.swt.graphics.Font roleFont;
+	private Font roleFont;
 	private TableViewer viewer;
 
 	private Image checkboxCheckedImage;
@@ -119,7 +124,7 @@ public class SessionView extends ViewPart {
 	}
 
 	private void runCommand(String commandId) {
-		var handlers = getSite().getService(org.eclipse.ui.handlers.IHandlerService.class);
+		var handlers = getSite().getService(IHandlerService.class);
 		if (handlers == null) {
 			return;
 		}
@@ -139,11 +144,11 @@ public class SessionView extends ViewPart {
 		GridLayoutFactory.fillDefaults().numColumns(2).spacing(8, 0).applyTo(header);
 
 		roleLabel = new Label(header, SWT.NONE);
-		org.eclipse.swt.graphics.FontData[] fd = roleLabel.getFont().getFontData();
-		for (org.eclipse.swt.graphics.FontData d : fd) {
+		FontData[] fd = roleLabel.getFont().getFontData();
+		for (FontData d : fd) {
 			d.setStyle(SWT.BOLD);
 		}
-		roleFont = new org.eclipse.swt.graphics.Font(parent.getDisplay(), fd);
+		roleFont = new Font(parent.getDisplay(), fd);
 		roleLabel.setFont(roleFont);
 		GridDataFactory.swtDefaults().align(SWT.LEFT, SWT.CENTER).applyTo(roleLabel);
 
@@ -287,9 +292,9 @@ public class SessionView extends ViewPart {
 			CollaborationInstance instance = findActiveInstance(SessionService.getInstance());
 			boolean active = instance != null;
 			emptyPage.setVisible(!active);
-			((org.eclipse.swt.layout.GridData) emptyPage.getLayoutData()).exclude = active;
+			((GridData) emptyPage.getLayoutData()).exclude = active;
 			sessionPage.setVisible(active);
-			((org.eclipse.swt.layout.GridData) sessionPage.getLayoutData()).exclude = !active;
+			((GridData) sessionPage.getLayoutData()).exclude = !active;
 
 			if (active) {
 				roleLabel.setText(instance.isHost ? "Hosting" : "Collaborating");
@@ -411,7 +416,7 @@ public class SessionView extends ViewPart {
 				gc.setBackground(root.getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND));
 				gc.fillRectangle(0, 0, 16, 16);
 				gc.setAntialias(SWT.ON);
-				org.eclipse.swt.graphics.Color fill = new org.eclipse.swt.graphics.Color(root.getDisplay(), color);
+				Color fill = new Color(root.getDisplay(), color);
 				gc.setBackground(fill);
 				gc.fillOval(2, 2, 12, 12);
 				fill.dispose();

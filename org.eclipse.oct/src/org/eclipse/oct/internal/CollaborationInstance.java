@@ -5,11 +5,11 @@
 package org.eclipse.oct.internal;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 import org.eclipse.core.resources.IFolder;
@@ -52,7 +52,19 @@ public class CollaborationInstance {
 	public final SessionData sessionData;
 	public final boolean isHost;
 
-	public final List<Peer> guests = new ArrayList<>();
+	/**
+	 * The server URL this session actually connected to — resolved from the
+	 * room token for a guest (which may differ from that guest's own default
+	 * server preference), or the preference used to host for a host. Use this,
+	 * not {@code OCTSettings.getDefaultServerURL()}, whenever displaying or
+	 * sharing this session's URL.
+	 */
+	public final String serverUrl;
+
+	// CopyOnWriteArrayList: peerJoined/peerLeft/initPeers mutate this from the
+	// JSON-RPC reader thread while SessionView.participants iterates it on the
+	// UI thread. A plain ArrayList risked a ConcurrentModificationException.
+	public final List<Peer> guests = new CopyOnWriteArrayList<>();
 	public Peer host;
 	public Peer identity;
 
@@ -70,11 +82,12 @@ public class CollaborationInstance {
 	private final Map<String, long[]> lastPropagatedSave = new ConcurrentHashMap<>();
 
 	public CollaborationInstance(BaseMessageHandler.BaseRemoteInterface remoteInterface, IProject project,
-			SessionData sessionData, boolean isHost) {
+			SessionData sessionData, boolean isHost, String serverUrl) {
 		this.remoteInterface = remoteInterface;
 		this.project = project;
 		this.sessionData = sessionData;
 		this.isHost = isHost;
+		this.serverUrl = serverUrl;
 		LOG.info("Initialized collaboration instance for project: " + project.getName());
 	}
 
@@ -111,6 +124,7 @@ public class CollaborationInstance {
 
 	public void peerLeft(Peer peer) {
 		guests.removeIf(g -> g.id.equals(peer.id));
+		peerColors.release(peer.id);
 		if (editorManager != null) {
 			editorManager.forgetPeer(peer.id);
 		}

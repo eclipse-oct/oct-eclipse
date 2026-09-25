@@ -21,7 +21,7 @@
 
 - [ ] Design the provider chooser dialog (list providers from `InitData`/
       `AuthMetadata`, launch the right flow per provider type).
-- [ ] Wire `FormAuthDialog` end to end against `AuthenticationService`.
+- [x] Wire `FormAuthDialog` end to end against `AuthenticationService`.
 - [ ] Wire `LoginBrowserDialog` end to end for browser-flow providers.
 - [ ] Decide the sharing-granularity UX (single file vs. folder vs. whole
       project) and extend `HostSessionHandler` / `WorkspaceFileSystemService`
@@ -33,6 +33,17 @@
   plugin's former ad-hoc TODO notes (now removed — its bug postmortems were
   merged into sync-and-save-lifecycle.md, its test-project note is already
   satisfied by `org.eclipse.oct.tests`).
+- 2026-09-25: `FormAuthDialog` confirmed working end to end against a local
+  server — a run log shows its POST to `/api/login/simple` returning 200,
+  `AuthenticationService.onAuthenticated` storing the token, and the session
+  reaching `CollaborationInstance`. `LoginBrowserDialog` gained a manual-token
+  fallback (`8c2c29b`): when the SWT `Browser` widget can't be created, the
+  dialog now offers a text field plus OK/Cancel instead of a dead URL label, so
+  a user who completes the login in an external browser can paste the token
+  back — previously that path ended in a label and a Close button, making the
+  login unfinishable. The
+  browser-flow item stays open — the embedded redirect path is still unverified
+  against a real OAuth-style provider.
 
 ## Open questions
 

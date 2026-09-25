@@ -9,6 +9,7 @@
  */
 package org.eclipse.oct.internal;
 
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.oct.internal.auth.AuthenticationService;
@@ -62,7 +63,7 @@ public class Activator extends AbstractUIPlugin {
 			if (event.getType() == IResourceChangeEvent.PRE_CLOSE
 					|| event.getType() == IResourceChangeEvent.PRE_DELETE) {
 				if (event.getResource() != null
-						&& event.getResource() instanceof org.eclipse.core.resources.IProject project) {
+						&& event.getResource() instanceof IProject project) {
 					if (sessionService.hasOpenSession(project)) {
 						sessionService.closeCurrentSession(project);
 					}
@@ -89,7 +90,7 @@ public class Activator extends AbstractUIPlugin {
 
 		// Close all open sessions
 		if (sessionService != null) {
-			for (org.eclipse.core.resources.IProject project : sessionService.getAllInstances().keySet()) {
+			for (IProject project : sessionService.getAllInstances().keySet()) {
 				try {
 					sessionService.closeCurrentSession(project);
 				} catch (Exception ignored) {

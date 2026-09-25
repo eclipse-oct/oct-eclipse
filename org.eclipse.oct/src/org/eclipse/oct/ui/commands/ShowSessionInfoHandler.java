@@ -8,7 +8,6 @@ import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.oct.internal.CollaborationInstance;
 import org.eclipse.oct.internal.SessionService;
-import org.eclipse.oct.prefs.OCTSettings;
 import org.eclipse.oct.ui.SessionCreatedDialog;
 import org.eclipse.ui.handlers.HandlerUtil;
 
@@ -32,9 +31,8 @@ public class ShowSessionInfoHandler extends OctSessionHandler {
 		}
 
 		String roomId = instance.sessionData.roomId;
-		String serverUrl = OCTSettings.getInstance().getDefaultServerURL();
 
-		new SessionCreatedDialog(HandlerUtil.getActiveShellChecked(event), roomId, serverUrl).open();
+		new SessionCreatedDialog(HandlerUtil.getActiveShellChecked(event), roomId, instance.serverUrl).open();
 		return null;
 	}
 

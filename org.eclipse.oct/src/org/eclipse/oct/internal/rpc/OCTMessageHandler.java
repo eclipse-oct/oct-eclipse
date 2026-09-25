@@ -25,6 +25,7 @@ import org.eclipse.oct.protocol.TextDocumentInsert;
 import org.eclipse.oct.protocol.User;
 import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.PlatformUI;
 
 /**
@@ -64,14 +65,29 @@ public class OCTMessageHandler extends BaseMessageHandler {
 		CompletableFuture<Boolean> result = new CompletableFuture<>();
 		Display display = Display.getDefault();
 		display.asyncExec(() -> {
-			String displayName = (user.email != null && !user.email.isEmpty()) ? user.name + " (" + user.email + ")"
-					: user.name;
-			boolean accepted = MessageDialog.openQuestion(
-					PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(), "Join Request",
-					displayName + " via " + user.authProvider + " wants to join the collaboration session. Accept?");
-			result.complete(accepted);
+			// A guest join request can arrive while no window has focus (e.g. the
+			// host alt-tabbed away). If getActiveWorkbenchWindow() NPEs here without
+			// this try/finally, result never completes and the guest hangs forever
+			// waiting for a response that will never come.
+			try {
+				String displayName = (user.email != null && !user.email.isEmpty()) ? user.name + " (" + user.email + ")"
+						: user.name;
+				boolean accepted = MessageDialog.openQuestion(activeShellOrNull(), "Join Request",
+						displayName + " via " + user.authProvider + " wants to join the collaboration session. Accept?");
+				result.complete(accepted);
+			} finally {
+				result.complete(false);
+			}
 		});
 		return result;
+	}
+
+	private static Shell activeShellOrNull() {
+		try {
+			return PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
+		} catch (Exception e) {
+			return Display.getDefault().getActiveShell();
+		}
 	}
 
 	@JsonNotification

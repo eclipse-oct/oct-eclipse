@@ -5,23 +5,41 @@
 package org.eclipse.oct.tests;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.jface.text.Position;
+import org.eclipse.jface.text.source.Annotation;
+import org.eclipse.jface.text.source.IAnnotationModel;
+import org.eclipse.jface.text.source.ISourceViewer;
+import org.eclipse.oct.editor.PeerAnnotation;
+import org.eclipse.oct.protocol.ClientTextSelection;
 import org.eclipse.oct.protocol.InitData;
 import org.eclipse.oct.protocol.SessionData;
 import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.tests.support.EclipseTestProjects;
 import org.eclipse.oct.tests.support.OctTestServer;
 import org.eclipse.oct.tests.support.TestPeer;
+import org.eclipse.oct.util.OctPaths;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.ide.IDE;
+import org.eclipse.ui.texteditor.AbstractTextEditor;
+import org.eclipse.ui.texteditor.ITextEditor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -166,11 +184,14 @@ class HandshakeTest {
 	@DisplayName("a guest disconnecting notifies the host via peerLeft")
 	void guestDisconnectNotifiesHost() throws Exception {
 		IProject hostProject = createProject("handshake-leave-host");
+		IFile hostFile = EclipseTestProjects.writeFile(hostProject, "testFolder/a.txt", "line one\nline two\n");
 		TestPeer host = newHost();
 		TestPeer guest = newGuest();
 
 		Workspace ws = new Workspace(hostProject.getName(), new String[] { "testFolder" });
 		SessionData hostSession = host.createRoom(hostProject, ws);
+		ITextEditor hostEditor = openHostEditor(hostFile);
+		String octPath = OctPaths.fromHostResource(hostFile);
 
 		guest.joinRoom(hostSession.roomId);
 		guest.awaitInit(30, TimeUnit.SECONDS);
@@ -178,6 +199,19 @@ class HandshakeTest {
 		// right after a successful join — needed below to confirm *which* peer
 		// left, since peerLeft only carries the departing peer's own info.
 		String guestPeerId = awaitSelfPeerId(guest);
+
+		// The guest selects in the host's open editor before disconnecting, so the
+		// end-to-end cleanup below actually has an annotation to remove — this is
+		// what closes the peer-disconnect-annotation-cleanup exec plan: a real
+		// wire-delivered peerLeft must sweep the departed peer's PeerAnnotations,
+		// not just its entry in EditorManager.peerDocumentPaths.
+		guest.octService().updateTextSelection(octPath,
+				new ClientTextSelection[] { new ClientTextSelection("self", 2, 6, false) });
+		host.firstTextSelection().get(15, TimeUnit.SECONDS);
+		pumpUiEvents();
+		List<PeerAnnotation> beforeLeave = peerAnnotations(hostEditor);
+		assertFalse(beforeLeave.isEmpty(), "host must render the guest's selection before it disconnects");
+		assertTrue(beforeLeave.stream().allMatch(a -> guestPeerId.equals(a.getPeerId())));
 
 		// Simulate the guest disconnecting (e.g. closing Eclipse) by tearing down
 		// its service process: the underlying socket.io connection drops, the
@@ -197,6 +231,11 @@ class HandshakeTest {
 		var left = host.firstPeerLeft().get(60, TimeUnit.SECONDS);
 		assertNotNull(left, "host must receive a peerLeft notification when its guest disconnects");
 		assertEquals(guestPeerId, left.id, "peerLeft must identify the peer that actually disconnected");
+
+		pumpUiEvents();
+		List<PeerAnnotation> afterLeave = peerAnnotations(hostEditor);
+		assertTrue(afterLeave.isEmpty(),
+				"the departed guest's annotations must be swept from the host's editor, found: " + afterLeave);
 	}
 
 	private static String awaitSelfPeerId(TestPeer peer) throws Exception {
@@ -232,5 +271,76 @@ class HandshakeTest {
 		IProject p = EclipseTestProjects.createProject(name);
 		openProjects.add(p);
 		return p;
+	}
+
+	/** Mirrors {@code EditorAdoptionTest.openHostEditor}. */
+	private static ITextEditor openHostEditor(IFile file) throws Exception {
+		AtomicReference<IEditorPart> ref = new AtomicReference<>();
+		AtomicReference<Exception> failure = new AtomicReference<>();
+		Display.getDefault().syncExec(() -> {
+			try {
+				IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
+				ref.set(IDE.openEditor(page, file, true));
+			} catch (Exception e) {
+				failure.set(e);
+			}
+		});
+		if (failure.get() != null) {
+			throw failure.get();
+		}
+		assertTrue(ref.get() instanceof ITextEditor, "expected a text editor to open on " + file);
+		return (ITextEditor) ref.get();
+	}
+
+	/** Mirrors {@code EditorAdoptionTest.peerAnnotations}. */
+	private static List<PeerAnnotation> peerAnnotations(ITextEditor editor) {
+		List<PeerAnnotation> result = new ArrayList<>();
+		Display.getDefault().syncExec(() -> {
+			ISourceViewer viewer = sourceViewer(editor);
+			if (viewer == null) {
+				return;
+			}
+			IAnnotationModel model = viewer.getAnnotationModel();
+			if (model == null) {
+				return;
+			}
+			model.getAnnotationIterator().forEachRemaining(annotation -> {
+				if (annotation instanceof PeerAnnotation peer) {
+					Position position = model.getPosition((Annotation) peer);
+					if (position != null) {
+						result.add(peer);
+					}
+				}
+			});
+		});
+		return result;
+	}
+
+	/** Same reflection fallback {@code EditorManager.getSourceViewer} uses. */
+	private static ISourceViewer sourceViewer(ITextEditor editor) {
+		if (!(editor instanceof AbstractTextEditor)) {
+			return null;
+		}
+		try {
+			Method method = AbstractTextEditor.class.getDeclaredMethod("getSourceViewer");
+			method.setAccessible(true);
+			return (ISourceViewer) method.invoke(editor);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * {@code EditorManager} posts its annotation work with {@code Display.asyncExec}
+	 * — pump the queue so it runs before asserting on annotation state.
+	 */
+	private static void pumpUiEvents() {
+		Display display = Display.getDefault();
+		if (display == null || display.getThread() != Thread.currentThread()) {
+			return;
+		}
+		for (int i = 0; i < 100 && display.readAndDispatch(); i++) {
+			// drain
+		}
 	}
 }

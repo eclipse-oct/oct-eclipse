@@ -14,9 +14,11 @@ import org.eclipse.equinox.security.storage.SecurePreferencesFactory;
 import org.eclipse.equinox.security.storage.StorageException;
 import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.window.Window;
+import org.eclipse.oct.internal.SessionService;
 import org.eclipse.oct.prefs.OCTSettings;
 import org.eclipse.oct.protocol.AuthMetadata;
 import org.eclipse.oct.protocol.AuthProvider;
+import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.swt.program.Program;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
@@ -38,6 +40,17 @@ public class AuthenticationService {
 	/** Currently open browser login dialog, closed when onAuthenticated fires. */
 	private LoginBrowserDialog currentBrowserDialog;
 
+	/**
+	 * Fires the server URL of an in-flight authentication when the user
+	 * aborts it: the provider chooser is cancelled, a {@link FormAuthDialog}
+	 * is closed/cancelled, or a {@link LoginBrowserDialog} is closed without
+	 * ever delivering a token. {@link SessionService}
+	 * subscribes for the lifetime of the connecting job so it can cancel the
+	 * matching {@code createRoom}/{@code joinRoom} future instead of leaving
+	 * it to time out.
+	 */
+	public final EventEmitter<String> onAuthAborted = new EventEmitter<>();
+
 	public static AuthenticationService getInstance() {
 		if (INSTANCE == null) {
 			INSTANCE = new AuthenticationService();
@@ -57,7 +70,7 @@ public class AuthenticationService {
 			// No metadata or no providers → open login-page URL
 			if (metadata == null || metadata.providers == null || metadata.providers.length == 0) {
 				if (metadata != null && metadata.loginPageUrl != null) {
-					openBrowserDialog(shell, metadata.loginPageUrl);
+					openBrowserDialog(shell, serverUrl, metadata.loginPageUrl);
 				}
 				return;
 			}
@@ -82,7 +95,12 @@ public class AuthenticationService {
 							.orElse(null);
 					if (selected != null) {
 						dispatchProvider(shell, serverUrl, token, selected, metadata);
+					} else {
+						onAuthAborted.fire(serverUrl);
 					}
+				} else {
+					// Chooser cancelled/closed without a selection.
+					onAuthAborted.fire(serverUrl);
 				}
 			}
 		});
@@ -100,14 +118,15 @@ public class AuthenticationService {
 		} else {
 			// Generic fallback: embedded browser or external browser
 			if (metadata.loginPageUrl != null) {
-				openBrowserDialog(shell, metadata.loginPageUrl);
+				openBrowserDialog(shell, serverUrl, metadata.loginPageUrl);
 			}
 		}
 	}
 
 	/**
 	 * Opens a {@link FormAuthDialog} with one field per provider field and POSTs
-	 * the result.
+	 * the result. Fires {@link #onAuthAborted} when the dialog is cancelled or
+	 * closed without submitting.
 	 */
 	private void handleFormAuth(Shell shell, String serverUrl, String token, AuthProvider provider) {
 		if (provider.fields == null || provider.fields.length == 0) {
@@ -116,7 +135,9 @@ public class AuthenticationService {
 		}
 		FormAuthDialog dialog = new FormAuthDialog(shell, serverUrl, token, provider.endpoint, provider.name,
 				provider.fields);
-		dialog.open();
+		if (dialog.open() != Window.OK) {
+			onAuthAborted.fire(serverUrl);
+		}
 	}
 
 	/**
@@ -134,9 +155,11 @@ public class AuthenticationService {
 
 	/**
 	 * Opens the embedded SWT Browser dialog for the login-page URL. Falls back to
-	 * {@link Program#launch} when the SWT Browser is unavailable.
+	 * {@link Program#launch} when the SWT Browser is unavailable. Fires
+	 * {@link #onAuthAborted} when the dialog closes without ever delivering a
+	 * token.
 	 */
-	private void openBrowserDialog(Shell shell, String loginPageUrl) {
+	private void openBrowserDialog(Shell shell, String serverUrl, String loginPageUrl) {
 		try {
 			if (currentBrowserDialog != null) {
 				currentBrowserDialog.close();
@@ -148,6 +171,8 @@ public class AuthenticationService {
 			String received = currentBrowserDialog.getReceivedToken();
 			if (received != null) {
 				onAuthenticated(received, loginPageUrl);
+			} else {
+				onAuthAborted.fire(serverUrl);
 			}
 		} catch (Exception e) {
 			// SWT Browser unavailable — fall back to external browser

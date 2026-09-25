@@ -11,7 +11,7 @@ and `open-collaboration-service-process` reference implementations in
 |---|---|---|
 | Live keystroke in an open editor | `DocumentSyncListener.documentChanged` (guarded by `sendUpdates`, echo-safe) | `awareness/updateDocument` (incremental) |
 | Caret/selection change | `SelectionSyncListener.selectionChanged` | `awareness/updateTextSelection` |
-| Editor opened, first time only | `EditorManager.partOpened` → `registerEditor` returns `true` once per path (also checked against `seededPaths`) | `awareness/openDocument` (full content, exactly once), followed by `awareness/getDocumentContent` polling in `confirmSeedThenEnableUpdates` before `sendUpdates` is flipped on (see gap below — closes a real corruption race) |
+| Editor opened, first time only — **including editors already open when the session starts** (`EditorManager`'s constructor sweeps `getEditorReferences()` via `adoptOpenEditors`, since `partOpened` only fires for editors opened afterwards) | `EditorManager.partOpened` / `adoptOpenEditors` → `trackEditor` → `registerEditor` returns `true` once per path | `awareness/openDocument` (full content, exactly once per registration), followed by `awareness/getDocumentContent` polling in `confirmSeedThenEnableUpdates` before `sendUpdates` is flipped on (see gap below — closes a real corruption race) |
 | Disk change (host only) — save, create, delete, rename | `WorkspaceChangeListener.resourceChanged` (only for hosted projects) | `fileSystem/change` broadcast |
 | Guest saves a file | `OctFileStore.openOutputStream().close()` (fired by Eclipse's normal save lifecycle on the linked `oct://` resource) | `fileSystem/writeFile` request → host |
 
@@ -20,8 +20,9 @@ and `open-collaboration-service-process` reference implementations in
 | Notification | Handler | Effect |
 |---|---|---|
 | `awareness/updateDocument` | `CollaborationInstance.updateDocument` → `EditorManager.updateDocument` | Applies `IDocument.replace()` with echo suppression — **only if the path has a registered `EditorState`**, i.e. is actually open somewhere locally. If not open, silently dropped (by design — there's no live buffer to mutate; the next open / `getDocumentContent` pulls the current Yjs content anyway). |
-| `awareness/updateTextSelection` | `EditorManager.updateTextSelection` | Renders peer cursor/selection annotations, plus per-peer follow-mode navigation if `followingPeerId` is set. |
-| `editorOpened` (host only) | `CollaborationInstance.editorOpened` → `EditorManager.guestOpenedEditor` | Seeds Yjs with real content (live doc if already open, else disk read) exactly once per path (`seededPaths` guard); only opens/activates the UI editor if "Follow guest selection" is on. |
+| `awareness/updateTextSelection` | `EditorManager.updateTextSelection` | Renders peer cursor/selection annotations, plus per-peer follow-mode navigation if `followingPeerId` is set. Also sweeps the reporting peer's annotations out of every *other* open editor — a peer that switched files never gets an explicit empty update for the file it left (see the `peerLeft` row below), so the old file's `PeerAnnotation`s would otherwise linger forever. |
+| `editorOpened` (host only) | `CollaborationInstance.editorOpened` → `EditorManager.guestOpenedEditor` | Host already has the file open: nothing to do — its registered editor seeded the path and holds the authoritative (possibly unsaved) buffer. Host does not: pushes the **on-disk** content via `awareness/openDocument`, exactly once per path (`seededPaths` guard), without opening an editor. Only opens/activates the UI editor if "Follow guest selection" is on. Upstream `editor.onOpen`'s `readOwnFile` is a second backstop, but it also reads disk, never a dirty host buffer. |
+| `peerLeft` | `CollaborationInstance.peerLeft` → `EditorManager.forgetPeer` | Removes the peer's entry from `peerDocumentPaths`, resets `followingPeerId`/`followGuestSelection` if the departed peer was the one being followed, releases its `PeerColors` slot, and sweeps its `PeerAnnotation`s from every open editor. Nothing over the wire ever tells a client a peer's selections dropped to zero (`checkSelectionUpdated` in `open-collaboration-service-process` only iterates *present* awareness states), so this cleanup has to be driven locally from `peerLeft` rather than from another awareness update. |
 | `fileSystem/change` (guest only — host ignores its own broadcast) | `CollaborationInstance.handleFileSystemChange` | Invalidates EFS caches. For `Update` on an open editor, `saveIfOpen` marks it clean and **skips** `refreshLocal` — a refresh would auto-reload the now-clean editor and `DocumentSyncListener` would echo the whole buffer as an insert (duplicated content). Closed files still refresh so the explorer stays current. |
 | `fileSystem/writeFile` (host) | `FileSystemMessageHandler.writeFile` → `EditorManager.saveIfOpen` | If host has it open: replaces content only if it actually differs (avoids a needless echo) and calls `editor.doSave()`. Otherwise falls straight through to `WorkspaceFileSystemService.writeFile` (direct disk write). |
 | `fileSystem/writeFile` (guest) | `FileSystemMessageHandler.writeFile` → `EditorManager.saveIfOpen` | Host already persisted the file. Guest applies content if needed, then `saveDocument(..., overwrite=true)` with `OctFileStore.suppressWrite` so the editor goes clean without echoing `writeFile` back or hitting Eclipse's "file changed on the file system" dialog. File not open: cache invalidate + refresh only. |
@@ -96,6 +97,32 @@ guest too, but that's a no-op since content already matches).
 below exists, why a given RPC type is shaped the way it is), not because
 there's remaining work here. -->
 
+- **(Fixed here)** Awareness was completely dead for any file the user already
+  had open when the session started. `EditorManager` only registered editors
+  via `IPartListener2.partOpened`, which never fires for an already-open tab
+  (and `partActivated` bails when there is no `EditorState` yet), so such a
+  file got no `DocumentSyncListener`, no `SelectionSyncListener`, no peer
+  annotation model and no `awareness/openDocument` seed for the whole session:
+  peer cursors never appeared, local typing was never broadcast, incoming
+  edits were dropped by `updateDocument`, and content only converged via a
+  save (which travels the unrelated `fileSystem/writeFile` path — hence the
+  "it only syncs when I press Ctrl+S" symptom). `EditorManager`'s constructor
+  now sweeps every window/page's `getEditorReferences()` in `adoptOpenEditors`,
+  matching VS Code's `workspace.textDocuments.forEach(registerTextDocument)`
+  and IntelliJ's replay of `FileEditorManager.allEditors`.
+- **(Fixed here)** `guestOpenedEditor` added a path to `seededPaths` without
+  ever calling `openDocument` (the seeding branch was dropped in `cddb528`),
+  and `partOpened` then treated that entry as "already pushed" and returned
+  before seeding — which also bypassed the ADR-0002 gate by calling
+  `enableSendUpdates` directly, exactly the regression that ADR's Consequences
+  section warns about. Because only `awareness/openDocument` reaches
+  `YjsNormalizedTextDocument.attachLocalDocument`, skipping it left the service
+  process computing every offset against the wrong base string (the disk text,
+  or `''`), so peer edits landed at wrong locations. `guestOpenedEditor` now
+  really seeds from disk when the host has no editor open, and `trackEditor`
+  always sends `openDocument`. Re-sending is cheap rather than a full
+  delete+insert: upstream's `registerYjsObject` returns early when the shared
+  text is already non-empty.
 - **(Fixed here — see [ADR-0002](../../docs/adr/0002-seed-confirmation-gate-with-timeout-fallback.md)
   for the decision and its trade-offs)** `awareness/openDocument` is fire-and-forget, and a non-host
   peer's own `text` argument is discarded upstream (`CollaborationInstance
@@ -111,6 +138,42 @@ there's remaining work here. -->
   `awareness/getDocumentContent` that this peer's own replica actually holds
   the seeded content (falling back to enabling it anyway after a 10s timeout,
   so a slow/unreachable server can't permanently freeze outgoing sync).
+- **(Fixed here)** `ServiceProcess` published its native `Process` handle through
+  a plain mutable field written by two threads: `close()` on an Eclipse `Job`
+  worker, and the `onExit()` callback that clears the field when the process
+  dies. Every use was a separate field read, so a process exiting mid-teardown
+  let `close()` pass its `!= null` guard and then throw
+  `NullPointerException: Cannot invoke "java.lang.Process.isAlive()"` — observed
+  from a failing "Joining OCT room..." job after the server rejected a join. The
+  same window sat between `pb.start()` and the lsp4j `Launcher` wiring, which
+  read `getInputStream()`/`getOutputStream()` off the field: a process exiting
+  before the launcher was wired would NPE there instead, and since an NPE is not
+  an `IOException` it would escape the surrounding catch and the constructor. The field is now `volatile` and
+  every user captures it into a local first. The `onExit` handler also stopped
+  throwing a `RuntimeException` into its own unobserved `CompletableFuture`,
+  which had skipped the field clear on the common non-zero-exit path. Same class
+  as the `CopyOnWriteArrayList` entry above: anything the JSON-RPC reader or
+  process-exit threads share with UI/`Job` threads needs explicit publication.
+- **(Fixed here)** A departed or file-switched peer left ghost cursors/selections
+  behind. `CollaborationInstance.peerLeft` called `EditorManager.forgetPeer`,
+  but that only ever cleared `peerDocumentPaths` — nothing touched the
+  per-editor `AnnotationModel`s holding the `PeerAnnotation`s `updateTextSelection`
+  had added, and `followingPeerId`/`followGuestSelection` were never reset
+  either (leaving a host who had followed a peer that then left in "any guest
+  may steal my editor focus" mode for the *next* guest). The same gap caused
+  stale annotations on a plain file switch, since (as the `peerLeft` row above
+  explains) the service process never sends an empty update for a path whose
+  selections just dropped to zero — VS Code avoids this entirely by giving each
+  peer ownership of its own `TextEditorDecorationType`s and disposing them on
+  `room.onLeave`. `forgetPeer` now sweeps `PeerAnnotation`s from every open
+  editor and resets follow state, `updateTextSelection` sweeps a reporting
+  peer's annotations out of every editor other than the one it just reported
+  in, and `PeerColors.release` returns a departed peer's color to the palette.
+  `CollaborationInstance.guests` also moved from a plain `ArrayList` to a
+  `CopyOnWriteArrayList`, since `peerJoined`/`peerLeft`/`initPeers` mutate it
+  from the JSON-RPC reader thread while `SessionView.participants` iterates it
+  on the UI thread. See `PeerAnnotationCleanupTest` and the extended
+  `HandshakeTest.guestDisconnectNotifiesHost`.
 - **(Fixed upstream, [open-collaboration-tools#207](https://github.com/eclipse-oct/open-collaboration-tools/commit/45c3beea3d2fc3390d50f94abbe38698aa355cca), 2026-08-24 — confirmed present 2026-09-11)**
   The discarded-`text`-on-guest behavior above used to mean a guest could seed
   the *host* with an empty string if the host hadn't opened that path yet.

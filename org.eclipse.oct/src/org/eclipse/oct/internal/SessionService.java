@@ -4,14 +4,18 @@
  */
 package org.eclipse.oct.internal;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -28,8 +32,10 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
 import org.eclipse.oct.editor.EditorManager;
 import org.eclipse.oct.internal.auth.AuthenticationService;
+import org.eclipse.oct.internal.fs.WorkspaceChangeListener;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemService;
 import org.eclipse.oct.internal.rpc.FileSystemMessageHandler;
 import org.eclipse.oct.internal.rpc.OCTMessageHandler;
@@ -41,6 +47,7 @@ import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.ui.SessionCreatedDialog;
 import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.PlatformUI;
 
 /**
@@ -51,10 +58,16 @@ public class SessionService {
 	private static final Logger LOG = Logger.getLogger(SessionService.class.getName());
 	private static SessionService INSTANCE;
 
+	/** Safety bound for {@link #awaitSession}: long enough that a human typing
+	 * credentials into a browser never trips it, short enough that a wedged
+	 * {@code oct-service-process} cannot pin a job forever. */
+	private static final long AWAIT_SESSION_SAFETY_BOUND_MS = TimeUnit.MINUTES.toMillis(5);
+
 	private final Map<IProject, ServiceProcess> processes = new HashMap<>();
 	private final Map<IProject, CollaborationInstance> instances = new HashMap<>();
 	private final List<IProject> tempProjectsToDelete = new ArrayList<>();
 	private final Set<IProject> pendingRoomCreations = new HashSet<>();
+	private final Set<String> pendingRoomJoins = new HashSet<>();
 
 	public final EventEmitter<CollaborationInstance> onSessionCreated = new EventEmitter<>();
 	public final EventEmitter<IProject> onSessionClosed = new EventEmitter<>();
@@ -71,13 +84,22 @@ public class SessionService {
 		return instances.containsKey(project);
 	}
 
+	/**
+	 * Whether a {@link ServiceProcess} is still registered for {@code project}.
+	 * A cancelled/aborted/failed connect attempt must leave no entry behind —
+	 * see {@code ConnectCancellationTest}.
+	 */
+	public boolean hasProcess(IProject project) {
+		return processes.containsKey(project);
+	}
+
 	public CollaborationInstance getCollaborationInstance(IProject project) {
 		return instances.get(project);
 	}
 
 	/**
 	 * Associate an already-wired instance with a project so
-	 * {@link org.eclipse.oct.internal.fs.WorkspaceChangeListener} can find it.
+	 * {@link WorkspaceChangeListener} can find it.
 	 * Production {@link #sessionCreated} does this; tests that build a
 	 * {@link CollaborationInstance} via {@code TestPeer} must call this or
 	 * host saves never propagate.
@@ -104,7 +126,13 @@ public class SessionService {
 
 		String serverUrl = OCTSettings.getInstance().getDefaultServerURL();
 		ServiceProcess process = createServiceProcess(serverUrl);
-		processes.put(project, process);
+		ServiceProcess displaced = processes.put(project, process);
+		if (displaced != null) {
+			// A prior attempt for this project left its process behind (should not
+			// happen given the finally-block teardown below, but a retry must not
+			// silently orphan it if it ever does).
+			displaced.close();
+		}
 
 		OCTService octService = process.getOctService();
 		CompletableFuture<SessionData> future = octService.createRoom(workspace);
@@ -113,24 +141,36 @@ public class SessionService {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
 				monitor.beginTask("Creating room", IProgressMonitor.UNKNOWN);
-				try {
-					SessionData sessionData = future.get(30, TimeUnit.SECONDS);
-					if (sessionData != null) {
-						sessionCreated(sessionData, serverUrl, project, monitor, true);
-						Display.getDefault().asyncExec(() -> {
-							new SessionCreatedDialog(PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(),
-									sessionData.roomId, serverUrl).open();
-						});
+				Runnable unsubscribeAbort = AuthenticationService.getInstance().onAuthAborted.onEvent(abortedUrl -> {
+					if (serverUrl.equals(abortedUrl)) {
+						future.cancel(true);
 					}
+				});
+				boolean sessionEstablished = false;
+				try {
+					SessionData sessionData = awaitSession(future, monitor);
+					if (sessionData == null) {
+						return Status.CANCEL_STATUS;
+					}
+					sessionCreated(sessionData, serverUrl, project, monitor, true);
+					sessionEstablished = true;
+					Display.getDefault().asyncExec(() -> {
+						new SessionCreatedDialog(activeShellOrNull(), sessionData.roomId, serverUrl).open();
+					});
 				} catch (Exception e) {
 					LOG.log(Level.SEVERE, "Error creating room", e);
-					final String errMsg = (e.getMessage() == null) ? "" : ("Error: " + e.getMessage());
-					Display.getDefault()
-							.asyncExec(() -> MessageDialog.openError(
-									PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(), "OCT Error",
-									"Failed to create room. " + errMsg));
+					final String errMsg = describeConnectionError(e, serverUrl);
+					Display.getDefault().asyncExec(
+							() -> MessageDialog.openError(activeShellOrNull(), "OCT Error", "Failed to create room. " + errMsg));
 				} finally {
+					unsubscribeAbort.run();
 					pendingRoomCreations.remove(project);
+					if (!sessionEstablished) {
+						ServiceProcess leftover = processes.remove(project);
+						if (leftover != null) {
+							leftover.close();
+						}
+					}
 				}
 				return Status.OK_STATUS;
 			}
@@ -146,16 +186,23 @@ public class SessionService {
 		// Support pasting a full room URL (format: serverUrl#roomId)
 		if (roomToken.contains("://")) {
 			try {
-				java.net.URI uri = new java.net.URI(roomToken);
+				URI uri = new URI(roomToken);
 				String fragment = uri.getFragment();
 				if (fragment != null && !fragment.isBlank()) {
-					String parsed = new java.net.URI(uri.getScheme(), uri.getAuthority(), "", null, null).toString();
+					String parsed = new URI(uri.getScheme(), uri.getAuthority(), "", null, null).toString();
 					serverUrl.set(OCTSettings.normalizeServerUrl(parsed));
 					roomToken = fragment;
 				}
-			} catch (java.net.URISyntaxException ignored) {
+			} catch (URISyntaxException ignored) {
 				// Not a valid URL, use token as-is
 			}
+		}
+
+		String joinKey = serverUrl.get() + "#" + roomToken;
+		if (!pendingRoomJoins.add(joinKey)) {
+			// A join request for this exact room is already in flight (e.g. a
+			// double-click before the async join completed).
+			return;
 		}
 
 		ServiceProcess process = createServiceProcess(serverUrl.get());
@@ -167,22 +214,35 @@ public class SessionService {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
 				monitor.beginTask("Joining room", IProgressMonitor.UNKNOWN);
+				Runnable unsubscribeAbort = AuthenticationService.getInstance().onAuthAborted.onEvent(abortedUrl -> {
+					if (serverUrl.get().equals(abortedUrl)) {
+						future.cancel(true);
+					}
+				});
+				boolean sessionEstablished = false;
 				try {
-					SessionData sessionData = future.get(30, TimeUnit.SECONDS);
-					if (sessionData != null) {
-						IProject tempProject = createTempProject(sessionData.workspace.name, monitor);
-						if (tempProject != null) {
-							processes.put(tempProject, process);
-							tempProjectsToDelete.add(tempProject);
-							sessionCreated(sessionData, serverUrl.get(), tempProject, monitor, false);
-						}
+					SessionData sessionData = awaitSession(future, monitor);
+					if (sessionData == null) {
+						return Status.CANCEL_STATUS;
+					}
+					IProject tempProject = createTempProject(sessionData.workspace.name, monitor);
+					if (tempProject != null) {
+						processes.put(tempProject, process);
+						tempProjectsToDelete.add(tempProject);
+						sessionCreated(sessionData, serverUrl.get(), tempProject, monitor, false);
+						sessionEstablished = true;
 					}
 				} catch (Exception e) {
 					LOG.log(Level.SEVERE, "Error joining room", e);
-					Display.getDefault()
-							.asyncExec(() -> MessageDialog.openError(
-									PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(), "OCT Error",
-									"Failed to join room: " + e.getMessage()));
+					final String errMsg = describeConnectionError(e, serverUrl.get());
+					Display.getDefault().asyncExec(
+							() -> MessageDialog.openError(activeShellOrNull(), "OCT Error", "Failed to join room. " + errMsg));
+				} finally {
+					unsubscribeAbort.run();
+					pendingRoomJoins.remove(joinKey);
+					if (!sessionEstablished) {
+						process.close();
+					}
 				}
 				return Status.OK_STATUS;
 			}
@@ -257,7 +317,7 @@ public class SessionService {
 
 		WorkspaceFileSystemService wfs = new WorkspaceFileSystemService(project);
 		CollaborationInstance instance = new CollaborationInstance(process.getOctService(), project, sessionData,
-				isHost);
+				isHost, serverUrl);
 		instance.setWorkspaceFileSystem(wfs);
 
 		// Wire EditorManager
@@ -267,6 +327,82 @@ public class SessionService {
 
 		instances.put(project, instance);
 		onSessionCreated.fire(instance);
+	}
+
+	/**
+	 * Blocks the given job's worker thread until {@code f} completes, is
+	 * cancelled (by the user pressing Cancel on the job's progress, or by an
+	 * {@link AuthenticationService#onAuthAborted} match), or a generous safety
+	 * bound elapses. Returns {@code null} on cancellation so the caller can
+	 * distinguish "user aborted" from "server responded" without inspecting
+	 * {@link CompletableFuture#isCancelled()} itself.
+	 *
+	 * <p>
+	 * Deliberately has no fixed short deadline: waiting on a human to
+	 * complete a browser login legitimately takes longer than a network
+	 * round-trip. The safety bound only guards against a wedged
+	 * {@code oct-service-process} pinning the job forever.
+	 */
+	private SessionData awaitSession(CompletableFuture<SessionData> f, IProgressMonitor monitor) throws Exception {
+		long deadline = System.currentTimeMillis() + AWAIT_SESSION_SAFETY_BOUND_MS;
+		while (!f.isDone()) {
+			if (monitor.isCanceled()) {
+				f.cancel(true);
+				return null;
+			}
+			if (System.currentTimeMillis() > deadline) {
+				f.cancel(true);
+				throw new TimeoutException(
+						"Server did not respond within " + TimeUnit.MILLISECONDS.toMinutes(AWAIT_SESSION_SAFETY_BOUND_MS)
+								+ " minutes");
+			}
+			Thread.sleep(100);
+		}
+		if (f.isCancelled()) {
+			// Cancelled out-of-band, e.g. by a matching onAuthAborted — f.get() would
+			// throw CancellationException, which callers would have to special-case.
+			return null;
+		}
+		return f.get();
+	}
+
+	private static Shell activeShellOrNull() {
+		try {
+			return PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
+		} catch (Exception e) {
+			return Display.getDefault().getActiveShell();
+		}
+	}
+
+	/**
+	 * Turns a room-creation/join failure into a message a user can act on.
+	 * The OCT server reports transport failures (unreachable host, DNS
+	 * failure, connection refused) as a generic Node.js {@code TypeError:
+	 * fetch failed} nested inside a {@link
+	 * ResponseErrorException} message, so we detect
+	 * those patterns and name the server URL instead of surfacing the raw
+	 * exception text.
+	 */
+	public static String describeConnectionError(Throwable e, String serverUrl) {
+		if (e instanceof TimeoutException) {
+			return "Server " + serverUrl + " did not respond in time.";
+		}
+		if (e instanceof CancellationException) {
+			return "The connection attempt was cancelled.";
+		}
+		// Depth cap rather than a self-reference check: a cause chain that cycles
+		// through more than one throwable (A -> B -> A) isn't caught by comparing
+		// only a cause to itself, and would otherwise spin forever.
+		Throwable cause = e;
+		for (int depth = 0; cause != null && depth < 8; depth++) {
+			String msg = cause.getMessage();
+			if (msg != null && (msg.contains("fetch failed") || msg.contains("ECONNREFUSED")
+					|| msg.contains("ENOTFOUND") || msg.contains("EAI_AGAIN"))) {
+				return "Server " + serverUrl + " is not reachable.";
+			}
+			cause = cause.getCause();
+		}
+		return e.getMessage() == null ? "" : ("Error: " + e.getMessage());
 	}
 
 	private ServiceProcess createServiceProcess(String serverUrl) {

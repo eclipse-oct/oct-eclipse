@@ -9,6 +9,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -123,9 +124,9 @@ public class FormAuthDialog extends TitleAreaDialog {
 				// OCT server with "HTTP/1.1 header parser received no bytes" (h2c /
 				// upgrade quirks). curl/Node (VS Code) are fine; Java is not.
 				HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
-						.connectTimeout(java.time.Duration.ofSeconds(15)).build();
+						.connectTimeout(Duration.ofSeconds(15)).build();
 				HttpRequest request = HttpRequest.newBuilder().uri(URI.create(postUrl))
-						.header("Content-Type", "application/json").timeout(java.time.Duration.ofSeconds(15))
+						.header("Content-Type", "application/json").timeout(Duration.ofSeconds(15))
 						.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 				HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 				if (response.statusCode() >= 200 && response.statusCode() < 300) {

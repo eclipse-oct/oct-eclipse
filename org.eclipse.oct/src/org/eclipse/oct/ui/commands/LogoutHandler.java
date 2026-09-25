@@ -13,6 +13,7 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.oct.internal.SessionService;
 import org.eclipse.oct.internal.auth.AuthenticationService;
+import org.eclipse.oct.prefs.OCTSettings;
 
 /**
  * Command handler for logging out of OCT (clears all stored tokens).
@@ -43,6 +44,6 @@ public class LogoutHandler extends AbstractHandler {
 
 	@Override
 	public boolean isEnabled() {
-		return !org.eclipse.oct.prefs.OCTSettings.getInstance().getStoredUserTokens().isEmpty();
+		return !OCTSettings.getInstance().getStoredUserTokens().isEmpty();
 	}
 }

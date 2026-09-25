@@ -20,6 +20,7 @@ import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.oct.protocol.FileContent;
 import org.eclipse.oct.protocol.FileSystemStat;
@@ -162,7 +163,7 @@ public class WorkspaceFileSystemService implements WorkspaceFileSystemServiceHol
 		return OctPaths.toHostProjectRelativePath(path, project.getName());
 	}
 
-	private void createFolderHierarchy(IFolder folder, org.eclipse.core.runtime.IProgressMonitor monitor)
+	private void createFolderHierarchy(IFolder folder, IProgressMonitor monitor)
 			throws CoreException {
 		if (folder.exists()) {
 			return;

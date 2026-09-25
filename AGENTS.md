@@ -14,14 +14,20 @@ Node.js 20+ on `PATH` — the build compiles and stages its native executable.
 Run from the repo root.
 
 ```sh
-mvn install -DskipTests               # one-time reactor install, ~25s fresh — needed before any single-module command below
-mvn clean verify                      # full build + native executable + all tests, ~50s
-mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<ClassName>   # single test class, ~9s once installed
+mvn install -DskipTests               # one-time reactor install, ~30s — needed before any single-module command below
+mvn clean verify                      # full build + native executable + all tests, ~3m15s (tests dominate, ~2m45s)
+mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<ClassName>   # single test class, once installed
 ```
 
 - There is no separate lint/typecheck command — `mvn clean verify` (Tycho
   compiler + PDE manifest checks) is the full verification, and it currently
-  passes cleanly on a fresh checkout (verified 2026-09-11, 87/87 tests).
+  passes cleanly on a fresh checkout (verified 2026-09-25, 103/103 tests).
+- The single-test command's timing depends heavily on what the class spins up:
+  a pure unit-style class (e.g. `OctPathsTest`) runs in ~12s, but most
+  integration classes launch a real `oct-service-process` and/or the PDE UI
+  harness and take 30-55s (`PathConversionTest` ~30s, `HandshakeTest` ~45s,
+  `EditorAdoptionTest` ~52s — timed 2026-09-25) — plan for the latter, not the
+  former, when picking a timeout.
 - The single-test form runs the `integration-test` phase, not `test`: since
   Tycho 5.0 the `tycho-surefire-plugin:test` goal (it launches an OSGi runtime
   to run tests, so Tycho classifies it as an integration test) is bound to
@@ -74,13 +80,11 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
 - The plugin must not defeat the OCT protocol's end-to-end encryption (e.g. by
   logging decrypted payloads anywhere the relay server could read them) — see
   [ADR-0001](docs/adr/0001-native-service-process-bridge.md).
-- Done means `mvn clean verify` passes locally (or, given the currently-known
-  failure above, that you've confirmed your change didn't introduce *new*
-  failures beyond that baseline), with output shown.
-- A change to the sync/save message flow (`editor/`, `internal/fs/`,
-  `internal/rpc/`) updates
+- Done means `mvn clean verify` passes locally, with output shown.
+- Any change under `editor/`, `internal/fs/`, or `internal/rpc/` updates
   [org.eclipse.oct/docs/sync-and-save-lifecycle.md](org.eclipse.oct/docs/sync-and-save-lifecycle.md)
-  in the same change.
+  in the same change — its "Resolved" section also records fixes that touch no
+  message at all, such as cross-thread publication and process-lifecycle races.
 - If reality contradicts this file or `docs/`, fix the doc in the same change
   — never work around it silently.
 

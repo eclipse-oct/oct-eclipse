@@ -43,4 +43,9 @@ public class PeerColors {
 		colors.put(peerId, generated);
 		return generated;
 	}
+
+	/** Returns a departed peer's color to the palette so a later joiner can reuse it. */
+	public void release(String peerId) {
+		colors.remove(peerId);
+	}
 }

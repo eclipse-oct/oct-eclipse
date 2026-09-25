@@ -11,6 +11,7 @@ import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.oct.internal.SessionService;
@@ -29,7 +30,7 @@ public class HostSessionHandler extends OctSessionHandler {
 
 		IProject project = getSelectedProject(event);
 		if (project == null) {
-			org.eclipse.jface.dialogs.MessageDialog.openError(window.getShell(), "Open Collaboration Tools",
+			MessageDialog.openError(window.getShell(), "Open Collaboration Tools",
 					"Please select a project to share.");
 			return null;
 		}

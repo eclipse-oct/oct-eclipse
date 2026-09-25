@@ -11,6 +11,7 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.oct.protocol.ClientTextSelection;
 import org.eclipse.oct.protocol.FileContent;
 import org.eclipse.oct.protocol.SessionData;
+import org.eclipse.oct.protocol.TextDocumentInsert;
 import org.eclipse.oct.protocol.Workspace;
 
 /**
@@ -41,5 +42,5 @@ public interface OCTService extends BaseMessageHandler.BaseRemoteInterface {
 	void updateTextSelection(String path, ClientTextSelection[] textSelections);
 
 	@JsonNotification(value = "awareness/updateDocument")
-	void updateDocument(String path, org.eclipse.oct.protocol.TextDocumentInsert[] updates);
+	void updateDocument(String path, TextDocumentInsert[] updates);
 }

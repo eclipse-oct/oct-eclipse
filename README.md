@@ -135,3 +135,5 @@ oct-eclipse/
 | M4 | ✅ | Editor collaboration: IPartListener2 editor tracking, DocumentSyncListener (echo-suppressed), SelectionSyncListener, remote apply with DocumentRewriteSession, PeerAnnotation + PeerCursorDrawingStrategy + PeerSelectionDrawingStrategy (AnnotationPainter), follow-mode |
 | M5 | 🔲 | Auth UI polish: provider chooser dialog, form auth fields, SWT Browser login flow |
 | M6 | ✅ | Tycho packaging: feature, p2 repository, .target (Eclipse 2025-03 + Orbit), executable staging via maven-antrun |
+| M7 | 🔲 | CI: a workflow that runs `mvn clean verify` on push/PR, so the existing build+test sensor is actually enforced instead of relying on someone running it locally |
+| M8 | 🔲 | Concurrency sensor: static analysis (e.g. SpotBugs) wired into the build to catch cross-thread field races — `ServiceProcess.currentProcess` and `CollaborationInstance.guests` have each shipped one such bug already (see `org.eclipse.oct/docs/sync-and-save-lifecycle.md`'s Resolved section) |

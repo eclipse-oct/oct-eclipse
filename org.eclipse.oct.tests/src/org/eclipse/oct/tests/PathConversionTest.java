@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.oct.internal.rpc.FileSystemService;
@@ -28,6 +29,7 @@ import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.tests.support.EclipseTestProjects;
 import org.eclipse.oct.tests.support.OctTestServer;
 import org.eclipse.oct.tests.support.TestPeer;
+import org.eclipse.oct.util.OctPaths;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -38,7 +40,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 
 /**
- * Integration tests: host-side {@link org.eclipse.oct.util.OctPaths}
+ * Integration tests: host-side {@link OctPaths}
  * conversion via the real {@code fileSystem/*} RPCs issued by a guest
  * {@link TestPeer}. String-level cases live in {@link OctPathsTest}; IFile
  * shapes in {@link OctPathsResourceTest}.
@@ -182,7 +184,7 @@ class PathConversionTest {
 		byte[] payload = "written by guest".getBytes(StandardCharsets.UTF_8);
 		fs.writeFile(path, new FileContent(payload), hostId).get(15, TimeUnit.SECONDS);
 
-		hostProject.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
+		hostProject.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		IFile created = hostProject.getFile("created.txt");
 		assertTrue(created.exists(), "writeFile must produce a real file on disk");
 		byte[] onDisk;
@@ -204,7 +206,7 @@ class PathConversionTest {
 		byte[] payload = "created via nested write".getBytes(StandardCharsets.UTF_8);
 		fs.writeFile(path, new FileContent(payload), hostId).get(15, TimeUnit.SECONDS);
 
-		hostProject.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
+		hostProject.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		IFile created = hostProject.getFile(new Path("generated/new/child.txt"));
 		assertTrue(created.exists(), "parent folders must have been auto-created");
 	}
@@ -213,7 +215,7 @@ class PathConversionTest {
 	@DisplayName("mkdir creates a folder resolvable via readDir")
 	void mkdirRoundTrip() throws Exception {
 		fs.mkdir(projectName + "/newdir", hostId).get(15, TimeUnit.SECONDS);
-		hostProject.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
+		hostProject.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		assertTrue(hostProject.getFolder("newdir").exists(), "mkdir must create a real folder");
 		Map<String, FileType> entries = fs.readDir(projectName, hostId).get(15, TimeUnit.SECONDS);
 		assertEquals(FileType.Directory, entries.get("newdir"));
@@ -223,7 +225,7 @@ class PathConversionTest {
 	@DisplayName("delete removes files by their protocol path")
 	void deleteFile() throws Exception {
 		fs.delete(projectName + "/test.txt", hostId).get(15, TimeUnit.SECONDS);
-		hostProject.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
+		hostProject.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		assertFalse(hostProject.getFile("test.txt").exists(), "delete must remove the file on disk");
 		FileSystemStat missing = fs.stat(projectName + "/test.txt", hostId).get(15, TimeUnit.SECONDS);
 		assertNull(missing, "stat of the deleted file must return null");
@@ -233,7 +235,7 @@ class PathConversionTest {
 	@DisplayName("rename moves a file across folders")
 	void renameFile() throws Exception {
 		fs.rename(projectName + "/test.txt", projectName + "/sub/renamed.txt", hostId).get(15, TimeUnit.SECONDS);
-		hostProject.refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, new NullProgressMonitor());
+		hostProject.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
 		assertFalse(hostProject.getFile("test.txt").exists(), "source must be gone after rename");
 		assertTrue(hostProject.getFile(new Path("sub/renamed.txt")).exists(), "target must exist after rename");
 		FileContent renamed = fs.readFile(projectName + "/sub/renamed.txt", hostId).get(15, TimeUnit.SECONDS);

@@ -90,7 +90,7 @@
 
    <!-- ===== Preference Pages ===== -->
    <extension point="org.eclipse.ui.preferencePages">
-      <page id="org.eclipse.oct.prefs" name="Open Collaboration Tools" class="org.eclipse.oct.prefs.OCTPreferencePage"/>
+      <page id="org.eclipse.oct.prefs" name="OCT" class="org.eclipse.oct.prefs.OCTPreferencePage"/>
    </extension>
 
    <!-- ===== Preference Initializer ===== -->
