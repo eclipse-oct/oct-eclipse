@@ -23,6 +23,31 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>stage-binary-for-test-runtime</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <copy todir="${project.basedir}/oct-bin" failonerror="false">
+                                    <fileset dir="${oct.binaries.dir}" includes="${oct.local.binary.name}"
+                                             erroronmissingdir="false"/>
+                                </copy>
+                                <chmod file="${project.basedir}/oct-bin/${oct.local.binary.name}" perm="ugo+rx"
+                                       osfamily="unix" failonerror="false"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
                 <groupId>org.eclipse.tycho</groupId>
                 <artifactId>tycho-surefire-plugin</artifactId>
                 <version>${tycho.version}</version>
@@ -39,6 +64,9 @@
                         <!-- Point tests at the sibling open-collaboration-tools checkout so
                              they can locate the OCT server entry point (bin/server). -->
                         <oct.project.path>${oct.project.path}</oct.project.path>
+                        <!-- Read by OctTestServer to raise java.util.logging to FINE, e.g. to
+                             see the Node OCT server's own console output. -->
+                        <oct.tests.logLevel>${oct.tests.logLevel}</oct.tests.logLevel>
                     </systemProperties>
                     <dependencies>
                         <!-- Version left at 0.0.0: org.eclipse.oct.target pins these to the
@@ -66,6 +94,10 @@
              -XstartOnFirstThread, which SWT requires when running the workbench
              harness on macOS. -->
         <oct.tests.argLine></oct.tests.argLine>
+        <!-- Override with -Doct.tests.logLevel=FINE for verbose java.util.logging
+             output (e.g. the Node OCT server's own console lines, normally
+             suppressed — see OctTestServer). -->
+        <oct.tests.logLevel>INFO</oct.tests.logLevel>
     </properties>
 
     <profiles>

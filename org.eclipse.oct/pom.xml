@@ -52,68 +52,38 @@
                 </executions>
             </plugin>
 
-            <!-- Build the native oct-service-process executable via npm, then stage it into
-                 oct-bin/ so ServiceProcess.EXECUTABLE_BASE ("oct-bin/oct-service-process") can
-                 extract it from the packaged bundle at runtime.
-                 Requires Node.js 20+ and the sibling open-collaboration-tools checkout at
-                 -Doct.project.path=... (defaulted in the parent pom). Hard-fails if npm or the
-                 build script is unavailable. -->
+            <!-- Build the sibling open-collaboration-tools checkout. Unconditional,
+                 and not only about the service process: the integration tests start
+                 that project's OCT server from the very same build output.
+                 Requires Node.js 20+ and the checkout at -Doct.project.path=...
+                 (defaulted in the parent pom). Hard-fails if npm or the build script
+                 is unavailable. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
                     <execution>
-                        <id>build-service-process-executable</id>
+                        <id>build-open-collaboration-tools</id>
                         <phase>generate-resources</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <target>
-                                <echo message="Building oct-service-process native executable (oct.project.path=${oct.project.path})"/>
+                                <echo message="Building open-collaboration-tools (oct.project.path=${oct.project.path})"/>
                                 <condition property="npm.executable" value="npm.cmd" else="npm">
                                     <os family="windows"/>
                                 </condition>
                                 <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
                                     <arg value="install"/>
                                 </exec>
-                                <!-- Build every workspace so the server bundle (needed by the
-                                     integration tests) and service-process bundle are both up to date. -->
+                                <!-- Every workspace, so the server bundle (needed by the
+                                     integration tests) is up to date too. -->
                                 <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
                                     <arg value="run"/>
                                     <arg value="build"/>
                                 </exec>
-                                <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
-                                    <arg value="run"/>
-                                    <arg value="create:executable"/>
-                                    <arg value="--workspace=open-collaboration-service-process"/>
-                                </exec>
-                            </target>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>stage-executables</id>
-                        <phase>generate-resources</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <echo message="Staging oct-service-process binaries into oct-bin/ (oct.project.path=${oct.project.path})"/>
-                                <!-- Wipe first: ServiceProcess prefers oct-service-process-&lt;platform&gt;
-                                     over the unsuffixed name. create:executable only emits
-                                     oct-service-process, so a leftover
-                                     oct-service-process-darwin-arm64 from an older build would
-                                     silently win at runtime and keep Eclipse on stale code. -->
-                                <delete>
-                                    <fileset dir="${project.basedir}/oct-bin" includes="oct-service-process*" erroronmissingdir="false"/>
-                                </delete>
-                                <copy todir="${project.basedir}/oct-bin" failonerror="true">
-                                    <fileset dir="${oct.project.path}/packages/open-collaboration-service-process/bin"
-                                             includes="oct-service-process*" erroronmissingdir="true"/>
-                                </copy>
-                                <chmod file="${project.basedir}/oct-bin/oct-service-process" perm="ugo+rx" osfamily="unix"/>
                             </target>
                         </configuration>
                     </execution>
@@ -121,6 +91,64 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Active unless -Doct.binaries.dir points at pre-built binaries (see the
+             parent pom): produce the native executable for this machine only. The
+             org.eclipse.oct.binary.* fragments then pick it up from there — this
+             bundle itself carries no executable, so that an installation can never
+             end up with a binary for the wrong platform. -->
+        <profile>
+            <id>native-executable-from-source</id>
+            <activation>
+                <property>
+                    <name>!oct.binaries.dir</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>create-native-executable</id>
+                                <phase>generate-resources</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <echo message="Building oct-service-process as ${oct.local.binary.name}"/>
+                                        <condition property="npm.executable" value="npm.cmd" else="npm">
+                                            <os family="windows"/>
+                                        </condition>
+                                        <exec executable="${npm.executable}" dir="${oct.project.path}" failonerror="true">
+                                            <arg value="run"/>
+                                            <arg value="create:executable"/>
+                                            <arg value="--workspace=open-collaboration-service-process"/>
+                                        </exec>
+                                        <!-- create:executable always emits the same unsuffixed name.
+                                             Renaming it to the platform-suffixed one is what lets the
+                                             fragments pick binaries up by a fixed name, and matches
+                                             how ServiceProcess looks the binary up at runtime. Driven
+                                             by a fileset so that the name that does not exist on this
+                                             platform is skipped silently rather than warned about. -->
+                                        <move todir="${oct.binaries.dir}">
+                                            <fileset dir="${oct.binaries.dir}"
+                                                     includes="oct-service-process,oct-service-process.exe"/>
+                                            <mapper type="merge" to="${oct.local.binary.name}"/>
+                                        </move>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
     <dependencies>
         <!-- These are used for compile only; runtime jars come from lib/ in bundle classpath -->

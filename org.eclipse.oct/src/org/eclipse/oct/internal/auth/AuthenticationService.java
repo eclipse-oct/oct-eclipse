@@ -19,6 +19,7 @@ import org.eclipse.oct.prefs.OCTSettings;
 import org.eclipse.oct.protocol.AuthMetadata;
 import org.eclipse.oct.protocol.AuthProvider;
 import org.eclipse.oct.util.EventEmitter;
+import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.program.Program;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
@@ -64,7 +65,7 @@ public class AuthenticationService {
 	 * dispatches to the appropriate flow (form, web, or browser fallback).
 	 */
 	public void authenticate(String serverUrl, String token, AuthMetadata metadata) {
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			Shell shell = activeShell();
 
 			// No metadata or no providers → open login-page URL
@@ -187,7 +188,7 @@ public class AuthenticationService {
 	 */
 	public void onAuthenticated(String authToken, String serverUrl) {
 		// Close embedded browser dialog if still open
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			if (currentBrowserDialog != null) {
 				currentBrowserDialog.close();
 				currentBrowserDialog = null;
@@ -197,7 +198,10 @@ public class AuthenticationService {
 			ISecurePreferences prefs = getSecureNode();
 			prefs.put(TOKEN_KEY_PREFIX + serverUrl, authToken, true /* encrypt */);
 			OCTSettings.getInstance().addStoredUserToken(serverUrl);
-		} catch (StorageException e) {
+		} catch (StorageException | SecurityException e) {
+			// Same keyring-unavailable case as in getAuthToken. The token still
+			// authenticates this session; only remembering it for the next one
+			// fails, so this must not break the login that just succeeded.
 			LOG.warning("Failed to store auth token: " + e.getMessage());
 		}
 	}
@@ -209,7 +213,13 @@ public class AuthenticationService {
 		try {
 			ISecurePreferences prefs = getSecureNode();
 			return prefs.get(TOKEN_KEY_PREFIX + serverUrl, null);
-		} catch (StorageException e) {
+		} catch (StorageException | SecurityException e) {
+			// SecurityException rather than StorageException is what an
+			// unavailable keyring surfaces as: dismissing the macOS keychain
+			// prompt makes OSXProvider throw "Could not obtain password.
+			// Result: -128" (errSecUserCanceled). Having no readable token is
+			// not a failure — the caller connects unauthenticated and the
+			// server's auth challenge then drives the normal login flow.
 			LOG.warning("Failed to read auth token: " + e.getMessage());
 			return null;
 		}
@@ -240,7 +250,8 @@ public class AuthenticationService {
 		try {
 			return PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
 		} catch (Exception e) {
-			return Display.getDefault().getActiveShell();
+			Display display = UIThread.display();
+			return display != null ? display.getActiveShell() : null;
 		}
 	}
 }

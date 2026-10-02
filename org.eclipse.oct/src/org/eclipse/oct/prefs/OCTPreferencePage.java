@@ -5,6 +5,7 @@
 package org.eclipse.oct.prefs;
 
 import org.eclipse.core.runtime.preferences.InstanceScope;
+import org.eclipse.jface.preference.BooleanFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
 import org.eclipse.jface.preference.StringFieldEditor;
 import org.eclipse.ui.IWorkbench;
@@ -25,7 +26,8 @@ public class OCTPreferencePage extends FieldEditorPreferencePage implements IWor
 
 	@Override
 	protected void createFieldEditors() {
-		addField(new StringFieldEditor("defaultServerURL", "Default server address:", getFieldEditorParent()));
+		addField(new StringFieldEditor(OCTSettings.KEY_SERVER_URL, "Default server address:", getFieldEditorParent()));
+		addField(new BooleanFieldEditor(OCTSettings.KEY_AUTO_FOLLOW_HOST, "Auto follow host on connnect", getFieldEditorParent()));
 	}
 
 	@Override

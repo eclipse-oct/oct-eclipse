@@ -24,6 +24,7 @@ import org.eclipse.oct.protocol.Peer;
 import org.eclipse.oct.protocol.TextDocumentInsert;
 import org.eclipse.oct.protocol.User;
 import org.eclipse.oct.util.EventEmitter;
+import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.PlatformUI;
@@ -63,7 +64,14 @@ public class OCTMessageHandler extends BaseMessageHandler {
 	@JsonRequest(value = "room/joinSessionRequest")
 	public CompletableFuture<Boolean> joinSessionRequest(User user) {
 		CompletableFuture<Boolean> result = new CompletableFuture<>();
-		Display display = Display.getDefault();
+		Display display = UIThread.display();
+		if (display == null) {
+			// Decline rather than drop the request: the workbench is gone, so
+			// the dialog can never be shown, and an uncompleted future leaves
+			// the guest waiting for a response forever.
+			result.complete(false);
+			return result;
+		}
 		display.asyncExec(() -> {
 			// A guest join request can arrive while no window has focus (e.g. the
 			// host alt-tabbed away). If getActiveWorkbenchWindow() NPEs here without
@@ -86,7 +94,8 @@ public class OCTMessageHandler extends BaseMessageHandler {
 		try {
 			return PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
 		} catch (Exception e) {
-			return Display.getDefault().getActiveShell();
+			Display display = UIThread.display();
+			return display != null ? display.getActiveShell() : null;
 		}
 	}
 
@@ -146,21 +155,23 @@ public class OCTMessageHandler extends BaseMessageHandler {
 	@JsonNotification
 	public void sessionClosed() {
 		if (collaborationInstance != null && !collaborationInstance.isHost) {
-			Display.getDefault().asyncExec(() -> {
-				var project = collaborationInstance.project;
-				WorkspaceJob job = new WorkspaceJob("Deleting Project: " + project.getName()) {
-					@Override
-					public IStatus runInWorkspace(IProgressMonitor monitor) throws CoreException {
-						if (project != null && project.exists()) {
-							project.delete(true, true, monitor);
-						}
-						return Status.OK_STATUS;
+			// Scheduled straight off the JSON-RPC reader: the deletion itself
+			// runs in the WorkspaceJob, so hopping onto the UI thread first
+			// bought nothing and only tied this cleanup to a display that is
+			// already gone when the guest closes Eclipse (see UIThread).
+			var project = collaborationInstance.project;
+			WorkspaceJob job = new WorkspaceJob("Deleting Project: " + project.getName()) {
+				@Override
+				public IStatus runInWorkspace(IProgressMonitor monitor) throws CoreException {
+					if (project != null && project.exists()) {
+						project.delete(true, true, monitor);
 					}
-				};
-				job.setRule(project);
-				job.setUser(false);
-				job.schedule();
-			});
+					return Status.OK_STATUS;
+				}
+			};
+			job.setRule(project);
+			job.setUser(false);
+			job.schedule();
 		}
 	}
 

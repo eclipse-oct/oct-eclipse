@@ -35,7 +35,8 @@ JVM-side client over stdio JSON-RPC.
 ## Consequences
 
 - A protocol change in `open-collaboration-tools` requires rebuilding the
-  native executable and re-staging it into `org.eclipse.oct/oct-bin/` — done
+  native executable and re-staging it into the platform's
+  `org.eclipse.oct.binary.*` fragment — done
   automatically by `mvn clean verify` via `oct.project.path` (see
   [ARCHITECTURE.md](../ARCHITECTURE.md)), but it means this repo cannot build
   standalone without a sibling `open-collaboration-tools` checkout.
@@ -45,6 +46,9 @@ JVM-side client over stdio JSON-RPC.
 - Debugging spans two runtimes: a protocol-level bug can be in the Java RPC
   binding (`OCTService`, message handlers) or in the native process itself,
   and reproducing it may require both a JDT debugger and Node.js tooling.
-- Packaging carries a native binary per platform (`oct-bin/`), increasing the
-  update site's size and requiring Node.js 20+ on `PATH` at build time (see
+- Packaging carries a native binary per platform, each in its own
+  `org.eclipse.oct.binary.*` fragment so that p2 installs only the matching
+  one. That keeps an installation down to a single ~120 MB Node
+  single-executable bundle, but the update site holds all of them, and
+  producing one needs a build per platform plus Node.js 20+ on `PATH` (see
   `README.md`).

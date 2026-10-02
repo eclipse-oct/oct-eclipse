@@ -9,6 +9,7 @@ import java.util.List;
 
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.oct.internal.SessionService;
+import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.widgets.Display;
 
 /**
@@ -55,7 +56,7 @@ abstract class OctSessionHandler extends AbstractHandler {
 		Runnable update = () -> setBaseEnabled(computeEnabled());
 		Display display = Display.getCurrent();
 		if (display == null) {
-			Display.getDefault().asyncExec(update);
+			UIThread.asyncExec(update);
 		} else {
 			update.run();
 		}

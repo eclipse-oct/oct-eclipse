@@ -50,12 +50,34 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
   (`org.eclipse.tycho.surefire.junit5` only imports `org.junit.jupiter.api`
   `[5,6)`, `.junit6` imports `[6,7)`), so a `providerHint` mismatched to the
   target's actual Jupiter major version reproduces the same error.
+- CI runs the very same `mvn clean verify` — see
+  [.github/workflows/build.yml](.github/workflows/build.yml), on every push to
+  `main` and every pull request. It runs in two stages: a `binaries` matrix
+  (ubuntu/windows/macos) that builds one `oct-service-process` per platform and
+  uploads it, then `build` on `ubuntu-latest`, which downloads all three and
+  passes them to Tycho as `-Doct.binaries.dir`. That split exists because a
+  Node single-executable bundle can only be built on the platform it targets,
+  and an update site built on one runner alone would ship a binary that is
+  unusable everywhere else. It checks this repo and `open-collaboration-tools`
+  out as siblings and tracks that project's `main`, so an upstream commit can
+  turn a PR red with nothing changed here; pin the `ref:` in the workflow if
+  that ever gets in the way. The suite needs a display there
+  (`useUIHarness=true`), hence `xvfb-run`. The p2 update site is kept as a
+  build artifact; test reports and the workbench `.log` are uploaded on
+  failure. Pass `-Doct.tests.logLevel=FINE` (or the `debug_logging` dispatch
+  input / `OCT_TESTS_DEBUG_LOGGING` repo variable) to surface the Node OCT
+  server's own console output.
 
 ## Why and where
 
 - `org.eclipse.oct/` — the plugin bundle; all Java sources under `src/`, plus
-  `lib/` (pre-downloaded third-party jars) and `oct-bin/` (native executable,
-  staged by the build — never hand-edit either).
+  `lib/` (msgpack jars, downloaded by the build — never hand-edit).
+- `org.eclipse.oct.binary.{linux.x86_64,win32.x86_64,macosx.aarch64}/` — one
+  fragment of the plugin bundle per platform, each carrying only that
+  platform's `oct-bin/oct-service-process-<platform>` (staged by the build).
+  A local build only fills the fragment for the machine it runs on; CI's
+  per-platform matrix hands all three to one Tycho run via
+  `-Doct.binaries.dir`. macOS x86_64 is deliberately not built.
 - `org.eclipse.oct.tests/` — JUnit 5 integration tests (Tycho
   `eclipse-test-plugin`); spin up a real OCT server + native service process
   and drive the plugin's actual internal classes.
@@ -75,8 +97,8 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
 
 ## Boundaries and definition of done
 
-- Never hand-edit `lib/`, `oct-bin/`, or anything under `target/` —
-  regenerate with `mvn clean verify`.
+- Never hand-edit `lib/`, any fragment's `oct-bin/`, or anything under
+  `target/` — regenerate with `mvn clean verify`.
 - The plugin must not defeat the OCT protocol's end-to-end encryption (e.g. by
   logging decrypted payloads anywhere the relay server could read them) — see
   [ADR-0001](docs/adr/0001-native-service-process-bridge.md).

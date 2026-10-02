@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 
 import org.eclipse.jface.layout.GridDataFactory;
 import org.eclipse.jface.layout.GridLayoutFactory;
+import org.eclipse.oct.prefs.OCTSettings;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
@@ -21,6 +22,7 @@ import org.eclipse.swt.widgets.Link;
 final class EmptySessionPanel extends Composite {
 
 	private Font titleFont;
+	private Runnable unsubscribeServerUrl;
 
 	EmptySessionPanel(Composite parent, Consumer<String> runCommand) {
 		super(parent, SWT.NONE);
@@ -38,6 +40,26 @@ final class EmptySessionPanel extends Composite {
 		hint.setText("Share a project or drop in with a room code.");
 		GridDataFactory.fillDefaults().grab(true, false).applyTo(hint);
 
+		Composite serverRow = new Composite(this, SWT.NONE);
+		GridLayoutFactory.fillDefaults().numColumns(2).spacing(4, 0).applyTo(serverRow);
+		GridDataFactory.fillDefaults().align(SWT.CENTER, SWT.CENTER).grab(true, false).applyTo(serverRow);
+
+		Label serverLabel = new Label(serverRow, SWT.NONE);
+		serverLabel.setForeground(getDisplay().getSystemColor(SWT.COLOR_WIDGET_DARK_SHADOW));
+		serverLabel.setText("OCT Server:");
+
+		Label serverUrl = new Label(serverRow, SWT.NONE);
+		serverUrl.setForeground(getDisplay().getSystemColor(SWT.COLOR_WIDGET_NORMAL_SHADOW));
+		serverUrl.setText(OCTSettings.getInstance().getDefaultServerURL());
+
+		unsubscribeServerUrl = OCTSettings.getInstance().addServerUrlChangeListener(url -> getDisplay().asyncExec(() -> {
+			if (serverUrl.isDisposed()) {
+				return;
+			}
+			serverUrl.setText(url);
+			layout(true, true);
+		}));
+
 		Link links = new Link(this, SWT.NONE);
 		links.setText("<a href=\"org.eclipse.oct.hostSession\">Host a project</a>"
 				+ "      <a href=\"org.eclipse.oct.joinSession\">Join with a code</a>");
@@ -47,6 +69,9 @@ final class EmptySessionPanel extends Composite {
 		addDisposeListener(__ -> {
 			if (titleFont != null && !titleFont.isDisposed()) {
 				titleFont.dispose();
+			}
+			if (unsubscribeServerUrl != null) {
+				unsubscribeServerUrl.run();
 			}
 		});
 	}

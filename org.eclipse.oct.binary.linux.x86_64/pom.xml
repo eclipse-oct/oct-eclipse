@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.eclipse.oct</groupId>
+        <artifactId>org.eclipse.oct.parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>org.eclipse.oct.binary.linux.x86_64</artifactId>
+    <packaging>eclipse-plugin</packaging>
+
+    <!-- The manifest's Eclipse-PlatformFilter stops this fragment from attaching
+         to its host anywhere but the platform it carries a binary for, and gives
+         the IU a matching p2 filter. That is the last line of defence behind the
+         feature's os/arch attributes: ServiceProcess resolves the executable
+         through the host bundle's classloader, so a fragment that reached the
+         wrong installation by any route other than a normal feature install
+         would otherwise attach and hand out a foreign-platform binary, which
+         dies instantly and silently. The header is NOT why the test runtime
+         cannot request this fragment - see org.eclipse.oct.tests/pom.xml for
+         that (verified 2026-10-02: removing it changed nothing). -->
+
+    <name>Eclipse OCT Service Process (linux x86_64)</name>
+    <description>Platform fragment carrying the oct-service-process executable for linux x86_64.
+        Installed by p2 only on that platform, so an installation never holds more than the
+        one binary it can actually run.</description>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>stage-binary</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- Absent binary is not an error: a local build only produces
+                                     the one for the machine it runs on, and the other three
+                                     fragments then package empty. Only the CI matrix feeds
+                                     oct.binaries.dir with all of them at once. -->
+                                <copy todir="${project.basedir}/oct-bin" failonerror="false">
+                                    <fileset dir="${oct.binaries.dir}" includes="oct-service-process-linux-x64"
+                                             erroronmissingdir="false"/>
+                                </copy>
+                                <chmod file="${project.basedir}/oct-bin/oct-service-process-linux-x64" perm="ugo+rx"
+                                       osfamily="unix" failonerror="false"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -15,8 +15,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
@@ -48,10 +50,42 @@ public final class OctTestServer {
 	private static OctTestServer instance;
 	private static volatile String cachedNodeExecutable;
 
+	static {
+		applyLogLevelFromSystemProperty();
+	}
+
 	private final Process process;
 
 	private OctTestServer(Process process) {
 		this.process = process;
+	}
+
+	/**
+	 * Honors {@code -Doct.tests.logLevel=FINE} (set via the pom's
+	 * {@code oct.tests.logLevel} property, overridable from the command line)
+	 * to surface {@code LOG.fine(...)} calls — notably this class's own
+	 * {@code [oct-server] ...} passthrough of the Node server's console output,
+	 * which is otherwise silently dropped by the JVM's default root logger
+	 * level and {@code ConsoleHandler} level (both INFO). A no-op at the
+	 * default {@code INFO}, since that is already the JVM default.
+	 */
+	private static void applyLogLevelFromSystemProperty() {
+		String levelName = System.getProperty("oct.tests.logLevel");
+		if (levelName == null || levelName.isBlank()) {
+			return;
+		}
+		Level level;
+		try {
+			level = Level.parse(levelName.trim().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			LOG.warning("Ignoring invalid oct.tests.logLevel '" + levelName + "': " + e.getMessage());
+			return;
+		}
+		Logger root = Logger.getLogger("");
+		root.setLevel(level);
+		for (Handler handler : root.getHandlers()) {
+			handler.setLevel(level);
+		}
 	}
 
 	public static synchronized OctTestServer ensureStarted() {

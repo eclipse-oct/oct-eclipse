@@ -6,6 +6,7 @@ package org.eclipse.oct.internal.rpc;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -35,6 +36,7 @@ public class ServiceProcess implements AutoCloseable {
 
 	private volatile Process currentProcess;
 	private volatile Launcher<BaseMessageHandler.BaseRemoteInterface> jsonRpc;
+	private volatile boolean closing;
 	private Path executablePath;
 
 	public ServiceProcess(String serverUrl, List<BaseMessageHandler> messageHandlers) {
@@ -90,19 +92,17 @@ public class ServiceProcess implements AutoCloseable {
 			currentProcess = started;
 
 			started.onExit().thenRun(() -> {
-				try {
-					byte[] err = started.getErrorStream().readAllBytes();
-					byte[] out = started.getInputStream().readAllBytes();
-					if (out.length > 0) {
-						LOG.info("OCT service process logged:\n" + new String(out));
-					}
-					if (err.length > 0 || started.exitValue() != 0) {
-						LOG.log(Level.SEVERE, "OCT service process exited with code (" + started.exitValue() + "):\n"
-								+ new String(err));
-					}
-				} catch (IOException ignored) {
-				}
 				currentProcess = null;
+				if (closing) {
+					return;
+				}
+				// Dying on its own is always a failure, and one that is otherwise
+				// close to undiagnosable: the next JSON-RPC write reports it as a
+				// bare "Stream closed" from the JDK's NullOutputStream (the dead
+				// process's stdin pipe), naming neither the exit code nor anything
+				// the process printed on its way out.
+				LOG.log(Level.SEVERE, "OCT service process exited unexpectedly with code " + started.exitValue()
+						+ describeStderr(started));
 			});
 
 			List<Class<?>> remoteInterfaces = new ArrayList<>();
@@ -144,13 +144,15 @@ public class ServiceProcess implements AutoCloseable {
 		}
 
 		String resourcePath = EXECUTABLE_BASE + "-" + platformKey + suffix;
+		// Deliberately no fallback to an unsuffixed name: the binary is a native
+		// executable, so a build that only produced one platform's binary would
+		// otherwise be handed to every other platform, where it starts and dies
+		// instantly instead of saying what is wrong.
 		InputStream binaryStream = getClass().getClassLoader().getResourceAsStream(resourcePath);
 		if (binaryStream == null) {
-			// Fallback: try without platform suffix (single binary bundled)
-			binaryStream = getClass().getClassLoader().getResourceAsStream(EXECUTABLE_BASE + suffix);
-		}
-		if (binaryStream == null) {
-			throw new IOException("OCT service process binary not found in bundle: " + resourcePath);
+			throw new IOException("No oct-service-process binary for " + os + "/" + arch
+					+ " in this installation (expected " + resourcePath
+					+ ", which ships in the org.eclipse.oct.binary.* fragment for this platform)");
 		}
 
 		Path tempDir = Files.createTempDirectory("oct-service-process-bin");
@@ -169,8 +171,19 @@ public class ServiceProcess implements AutoCloseable {
 		}));
 	}
 
+	/** Best effort: the process reaper may already have closed the drained stream. */
+	private static String describeStderr(Process process) {
+		try {
+			String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+			return stderr.isBlank() ? " (no stderr output)" : ":\n" + stderr;
+		} catch (IOException e) {
+			return " (stderr unavailable: " + e.getMessage() + ")";
+		}
+	}
+
 	@Override
 	public void close() {
+		closing = true;
 		Process process = currentProcess;
 		try {
 			if (process != null) {

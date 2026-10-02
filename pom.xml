@@ -18,11 +18,17 @@
         <maven.compiler.target>21</maven.compiler.target>
         <!-- Path to the open-collaboration-tools project (for building service process) -->
         <oct.project.path>${project.basedir}/../../open-collaboration-tools</oct.project.path>
+        <!-- Overridden by the platform profiles below; the fallback only keeps the
+             build resolvable on a platform none of them match. -->
+        <oct.binary.fragment>org.eclipse.oct.binary.linux.x86_64</oct.binary.fragment>
     </properties>
 
     <modules>
         <module>org.eclipse.oct.target</module>
         <module>org.eclipse.oct</module>
+        <module>org.eclipse.oct.binary.linux.x86_64</module>
+        <module>org.eclipse.oct.binary.win32.x86_64</module>
+        <module>org.eclipse.oct.binary.macosx.aarch64</module>
         <module>org.eclipse.oct.tests</module>
         <module>org.eclipse.oct.feature</module>
         <module>org.eclipse.oct.repository</module>
@@ -59,11 +65,10 @@
                             <ws>win32</ws>
                             <arch>x86_64</arch>
                         </environment>
-                        <environment>
-                            <os>macosx</os>
-                            <ws>cocoa</ws>
-                            <arch>x86_64</arch>
-                        </environment>
+                        <!-- macOS on Intel is deliberately absent: no
+                             org.eclipse.oct.binary.* fragment is built for it, so
+                             resolving the target platform for that environment would
+                             only produce SWT fragments nothing ever ships. -->
                         <environment>
                             <os>macosx</os>
                             <ws>cocoa</ws>
@@ -74,4 +79,68 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Where the oct-service-process binaries are picked up from. Unset means
+             "build one here", which is the local workflow: npm produces the binary
+             for this machine only, so exactly one of the three binary fragments ends
+             up carrying something. CI passes -Doct.binaries.dir=<dir> holding all
+             three, built by its per-platform matrix, so a single Tycho run produces
+             an update site that serves every supported platform. -->
+        <profile>
+            <id>native-executable-from-source</id>
+            <activation>
+                <property>
+                    <name>!oct.binaries.dir</name>
+                </property>
+            </activation>
+            <properties>
+                <oct.binaries.dir>${oct.project.path}/packages/open-collaboration-service-process/bin</oct.binaries.dir>
+            </properties>
+        </profile>
+
+        <!-- The local platform's binary name and fragment. The name is what the
+             npm output gets renamed to (ServiceProcess looks the binary up by
+             platform suffix, never unsuffixed); the fragment is what the test
+             runtime has to install to find it. -->
+        <profile>
+            <id>platform-macosx-aarch64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <oct.local.binary.name>oct-service-process-darwin-arm64</oct.local.binary.name>
+                <oct.binary.fragment>org.eclipse.oct.binary.macosx.aarch64</oct.binary.fragment>
+            </properties>
+        </profile>
+        <profile>
+            <id>platform-linux-x86_64</id>
+            <activation>
+                <os>
+                    <name>linux</name>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <oct.local.binary.name>oct-service-process-linux-x64</oct.local.binary.name>
+                <oct.binary.fragment>org.eclipse.oct.binary.linux.x86_64</oct.binary.fragment>
+            </properties>
+        </profile>
+        <profile>
+            <id>platform-win32-x86_64</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <oct.local.binary.name>oct-service-process-win32.exe</oct.local.binary.name>
+                <oct.binary.fragment>org.eclipse.oct.binary.win32.x86_64</oct.binary.fragment>
+            </properties>
+        </profile>
+    </profiles>
 </project>

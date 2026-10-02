@@ -4,10 +4,6 @@ Bundle-Name: Eclipse OCT
 Bundle-SymbolicName: org.eclipse.oct;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-ClassPath: .,
- lib/lsp4j.jsonrpc.jar,
- lib/jackson-databind.jar,
- lib/jackson-core.jar,
- lib/jackson-annotations.jar,
  lib/jackson-dataformat-msgpack.jar,
  lib/msgpack-core.jar
 Bundle-Vendor: Eclipse ECD

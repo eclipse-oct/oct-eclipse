@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.jface.action.Separator;
@@ -26,12 +27,15 @@ import org.eclipse.oct.internal.CollaborationInstance;
 import org.eclipse.oct.internal.SessionService;
 import org.eclipse.oct.protocol.Peer;
 import org.eclipse.oct.util.OctPaths;
+import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.ImageData;
+import org.eclipse.swt.graphics.PaletteData;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.layout.GridData;
@@ -55,6 +59,8 @@ public class SessionView extends ViewPart {
 
 	public static final String ID = "org.eclipse.oct.sessionView";
 
+	private static final int ICON_SIZE = 16;
+
 	private Composite root;
 	private Composite emptyPage;
 	private Composite sessionPage;
@@ -65,6 +71,7 @@ public class SessionView extends ViewPart {
 
 	private Image checkboxCheckedImage;
 	private Image checkboxUncheckedImage;
+	private RGB checkboxColor;
 	private Image fileImage;
 	private final Map<RGB, Image> colorDots = new HashMap<>();
 
@@ -91,8 +98,6 @@ public class SessionView extends ViewPart {
 		viewMenu.add(new CommandContributionItem(new CommandContributionItemParameter(getSite(), null,
 				"org.eclipse.oct.logout", CommandContributionItem.STYLE_PUSH)));
 
-		checkboxCheckedImage = createCheckboxImage(parent.getDisplay(), true);
-		checkboxUncheckedImage = createCheckboxImage(parent.getDisplay(), false);
 		fileImage = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE);
 
 		root = new Composite(parent, SWT.NONE);
@@ -247,7 +252,7 @@ public class SessionView extends ViewPart {
 				// Only one row is ever checked: EditorManager tracks a single
 				// followingPeerId, so following a new peer automatically
 				// un-checks whichever row was checked before.
-				return isFollowing(p) ? checkboxCheckedImage : checkboxUncheckedImage;
+				return checkboxImage(isFollowing(p));
 			}
 
 			@Override
@@ -285,7 +290,7 @@ public class SessionView extends ViewPart {
 	}
 
 	private void refresh() {
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			if (root == null || root.isDisposed()) {
 				return;
 			}
@@ -409,22 +414,75 @@ public class SessionView extends ViewPart {
 	}
 
 	private Image colorDot(RGB rgb) {
-		return colorDots.computeIfAbsent(rgb, color -> {
-			Image img = new Image(root.getDisplay(), 16, 16);
-			GC gc = new GC(img);
-			try {
-				gc.setBackground(root.getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND));
-				gc.fillRectangle(0, 0, 16, 16);
-				gc.setAntialias(SWT.ON);
-				Color fill = new Color(root.getDisplay(), color);
-				gc.setBackground(fill);
-				gc.fillOval(2, 2, 12, 12);
-				fill.dispose();
-			} finally {
-				gc.dispose();
+		return colorDots.computeIfAbsent(rgb,
+				color -> maskedImage(root.getDisplay(), gc -> {
+					Color fill = new Color(root.getDisplay(), color);
+					gc.setBackground(fill);
+					gc.fillOval(2, 2, 12, 12);
+					fill.dispose();
+				}));
+	}
+
+	/**
+	 * Paints an icon with a real alpha channel, so the table paints its own
+	 * cell background (including the selection highlight) behind it.
+	 * <p>
+	 * Neither of the obvious alternatives works: filling the icon with
+	 * {@code Display.getSystemColor(SWT.COLOR_LIST_BACKGROUND)} leaves a light
+	 * square in dark mode, because Eclipse themes the table via CSS and that
+	 * system color still reports the platform default; and an
+	 * {@code ImageData.transparentPixel} mask is ignored on macOS, which
+	 * leaves the mask color itself visible.
+	 * <p>
+	 * The icon is therefore rendered twice, once over black and once over
+	 * white. The per-pixel difference between the two renderings is exactly
+	 * the share of background that shows through, which yields the alpha
+	 * value; dividing the rendering over black by that alpha recovers the
+	 * unblended icon color. Antialiased edges keep their partial coverage.
+	 */
+	private static Image maskedImage(Display display, Consumer<GC> painter) {
+		ImageData overBlack = render(display, painter, 0);
+		ImageData overWhite = render(display, painter, 255);
+		ImageData icon = new ImageData(ICON_SIZE, ICON_SIZE, 24, new PaletteData(0xFF0000, 0xFF00, 0xFF));
+		icon.alphaData = new byte[ICON_SIZE * ICON_SIZE];
+		for (int y = 0; y < ICON_SIZE; y++) {
+			for (int x = 0; x < ICON_SIZE; x++) {
+				RGB black = overBlack.palette.getRGB(overBlack.getPixel(x, y));
+				RGB white = overWhite.palette.getRGB(overWhite.getPixel(x, y));
+				int alpha = Math.clamp(255 - (white.red - black.red), 0, 255);
+				icon.alphaData[y * ICON_SIZE + x] = (byte) alpha;
+				icon.setPixel(x, y, icon.palette.getPixel(unblend(black, alpha)));
 			}
-			return img;
-		});
+		}
+		return new Image(display, icon);
+	}
+
+	private static ImageData render(Display display, Consumer<GC> painter, int gray) {
+		Image img = new Image(display, ICON_SIZE, ICON_SIZE);
+		GC gc = new GC(img);
+		Color background = new Color(display, gray, gray, gray);
+		try {
+			gc.setBackground(background);
+			gc.fillRectangle(0, 0, ICON_SIZE, ICON_SIZE);
+			gc.setAntialias(SWT.ON);
+			painter.accept(gc);
+		} finally {
+			gc.dispose();
+			background.dispose();
+		}
+		ImageData data = img.getImageData();
+		img.dispose();
+		return data;
+	}
+
+	/** Recovers the icon's own color from its blend over a black background. */
+	private static RGB unblend(RGB overBlack, int alpha) {
+		if (alpha == 0) {
+			return new RGB(0, 0, 0);
+		}
+		return new RGB(Math.clamp(overBlack.red * 255 / alpha, 0, 255),
+				Math.clamp(overBlack.green * 255 / alpha, 0, 255),
+				Math.clamp(overBlack.blue * 255 / alpha, 0, 255));
 	}
 
 	private static CollaborationInstance findActiveInstance(SessionService svc) {
@@ -434,14 +492,29 @@ public class SessionView extends ViewPart {
 		return svc.getAllInstances().values().stream().findFirst().orElse(null);
 	}
 
-	private static Image createCheckboxImage(Display display, boolean checked) {
-		Image img = new Image(display, 16, 16);
-		GC gc = new GC(img);
-		try {
-			gc.setBackground(display.getSystemColor(SWT.COLOR_LIST_BACKGROUND));
-			gc.fillRectangle(0, 0, 16, 16);
-			gc.setAntialias(SWT.ON);
-			gc.setForeground(display.getSystemColor(SWT.COLOR_WIDGET_FOREGROUND));
+	/**
+	 * Builds the checkbox icons lazily and rebuilds them whenever the table's
+	 * foreground changes. The table's own foreground follows Eclipse's CSS
+	 * theme, while {@code Display.getSystemColor(SWT.COLOR_WIDGET_FOREGROUND)}
+	 * keeps reporting the platform default and would draw a dark checkbox on
+	 * a dark row. The color is only known once the table has been created and
+	 * styled, hence the lazy build.
+	 */
+	private Image checkboxImage(boolean checked) {
+		Color foreground = viewer.getTable().getForeground();
+		if (!foreground.getRGB().equals(checkboxColor)) {
+			disposeCheckboxImages();
+			checkboxColor = foreground.getRGB();
+			Display display = viewer.getTable().getDisplay();
+			checkboxCheckedImage = createCheckboxImage(display, foreground, true);
+			checkboxUncheckedImage = createCheckboxImage(display, foreground, false);
+		}
+		return checked ? checkboxCheckedImage : checkboxUncheckedImage;
+	}
+
+	private static Image createCheckboxImage(Display display, Color foreground, boolean checked) {
+		return maskedImage(display, gc -> {
+			gc.setForeground(foreground);
 			gc.setLineWidth(1);
 			gc.drawRectangle(3, 3, 9, 9);
 			if (checked) {
@@ -449,10 +522,16 @@ public class SessionView extends ViewPart {
 				gc.drawLine(4, 8, 6, 10);
 				gc.drawLine(6, 10, 11, 4);
 			}
-		} finally {
-			gc.dispose();
+		});
+	}
+
+	private void disposeCheckboxImages() {
+		if (checkboxCheckedImage != null && !checkboxCheckedImage.isDisposed()) {
+			checkboxCheckedImage.dispose();
 		}
-		return img;
+		if (checkboxUncheckedImage != null && !checkboxUncheckedImage.isDisposed()) {
+			checkboxUncheckedImage.dispose();
+		}
 	}
 
 	@Override
@@ -480,12 +559,7 @@ public class SessionView extends ViewPart {
 		if (roleFont != null && !roleFont.isDisposed()) {
 			roleFont.dispose();
 		}
-		if (checkboxCheckedImage != null && !checkboxCheckedImage.isDisposed()) {
-			checkboxCheckedImage.dispose();
-		}
-		if (checkboxUncheckedImage != null && !checkboxUncheckedImage.isDisposed()) {
-			checkboxUncheckedImage.dispose();
-		}
+		disposeCheckboxImages();
 		for (Image dot : colorDots.values()) {
 			if (!dot.isDisposed()) {
 				dot.dispose();

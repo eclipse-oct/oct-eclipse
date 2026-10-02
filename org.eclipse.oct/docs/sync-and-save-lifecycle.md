@@ -19,6 +19,7 @@ and `open-collaboration-service-process` reference implementations in
 
 | Notification | Handler | Effect |
 |---|---|---|
+| `init` (guest) | `OCTMessageHandler.init` → `CollaborationInstance.initPeers` → `autoFollowHost` | First point at which the host's peer id is known, which is what follow mode keys on. Arms `EditorManager.followPeer(host.id)` when the `autoFollowHost` preference is on (the default), so a guest starts out following the host; the actual navigation still waits for the next `awareness/updateTextSelection`, since that is what carries a position to jump to. Guest-side only — on a host the same `followGuestSelection` flag means the opposite thing ("a guest opening a file may steal my editor focus") and deliberately stays off. Armed at most once per session, so a re-delivered `init` cannot switch following back on after the user unchecked it in the Session view. |
 | `awareness/updateDocument` | `CollaborationInstance.updateDocument` → `EditorManager.updateDocument` | Applies `IDocument.replace()` with echo suppression — **only if the path has a registered `EditorState`**, i.e. is actually open somewhere locally. If not open, silently dropped (by design — there's no live buffer to mutate; the next open / `getDocumentContent` pulls the current Yjs content anyway). |
 | `awareness/updateTextSelection` | `EditorManager.updateTextSelection` | Renders peer cursor/selection annotations, plus per-peer follow-mode navigation if `followingPeerId` is set. Also sweeps the reporting peer's annotations out of every *other* open editor — a peer that switched files never gets an explicit empty update for the file it left (see the `peerLeft` row below), so the old file's `PeerAnnotation`s would otherwise linger forever. |
 | `editorOpened` (host only) | `CollaborationInstance.editorOpened` → `EditorManager.guestOpenedEditor` | Host already has the file open: nothing to do — its registered editor seeded the path and holds the authoritative (possibly unsaved) buffer. Host does not: pushes the **on-disk** content via `awareness/openDocument`, exactly once per path (`seededPaths` guard), without opening an editor. Only opens/activates the UI editor if "Follow guest selection" is on. Upstream `editor.onOpen`'s `readOwnFile` is a second backstop, but it also reads disk, never a dirty host buffer. |
@@ -97,6 +98,24 @@ guest too, but that's a no-op since content already matches).
 below exists, why a given RPC type is shaped the way it is), not because
 there's remaining work here. -->
 
+- **(Fixed here)** A service process that died on its own left no trace, and
+  the symptom named nothing useful. `ServiceProcess`'s `onExit` handler only
+  logged when it could read stderr — inside a `catch (IOException ignored)`,
+  which is exactly what a stream already drained by the process reaper throws —
+  so an executable that failed to run produced complete silence. The first
+  outgoing RPC then surfaced it as `java.io.IOException: Stream closed` thrown
+  from `ProcessBuilder$NullOutputStream`, which is the JDK swapping a dead
+  process's stdin pipe, several layers below anything naming the process. The
+  handler now always logs the exit code (suppressed only for a `close()` we
+  initiated, which would otherwise report every normal session teardown as a
+  failure) and appends stderr when it can still be read. The trigger was a CI
+  artifact carrying the service process for the wrong platform: the build
+  staged a single unsuffixed binary and `extractExecutable` fell back to it on
+  every platform, so a Linux build installed on macOS started a binary that
+  died instantly. The binary now ships per platform in
+  `org.eclipse.oct.binary.*` fragments and is looked up by platform suffix
+  only, with no fallback.
+
 - **(Fixed here)** Awareness was completely dead for any file the user already
   had open when the session started. `EditorManager` only registered editors
   via `IPartListener2.partOpened`, which never fires for an already-open tab
@@ -174,6 +193,49 @@ there's remaining work here. -->
   from the JSON-RPC reader thread while `SessionView.participants` iterates it
   on the UI thread. See `PeerAnnotationCleanupTest` and the extended
   `HandshakeTest.guestDisconnectNotifiesHost`.
+- **(Fixed here)** Closing the guest Eclipse ended the session with
+  `org.eclipse.swt.SWTException: Invalid thread access` out of
+  `OCTMessageHandler.sessionClosed`, plus a `***WARNING: Display must be
+  created on main thread due to Cocoa restrictions` on stderr. The trap is
+  that `Display.getDefault()` does not return null when no display exists —
+  it *creates* one, making the calling thread that display's UI thread, which
+  on macOS is only legal on the main thread. Every dispatch out of the
+  JSON-RPC reader went through it, and `sessionClosed` is precisely the
+  notification that arrives while the workbench is tearing down: the real
+  display was already gone, so SWT tried to build a fresh one on the reader
+  thread and threw. The same window hit `EditorManager.dispose`, whose
+  `PlatformUI.isWorkbenchRunning()` guard sat *inside* the runnable and so
+  never got the chance to run. All 18 dispatch sites now go through
+  `org.eclipse.oct.util.UIThread`, which resolves the display via
+  `Display.getCurrent()`/`PlatformUI.getWorkbench().getDisplay()` — never
+  creating one — and drops the work when no live display is left.
+  `joinSessionRequest` completes its future with `false` rather than dropping
+  it, since an uncompleted future would leave the guest waiting for a
+  response forever, and `sessionClosed` stopped hopping onto the UI thread
+  altogether: the guest project deletion runs in a `WorkspaceJob` anyway, so
+  it now survives the shutdown race instead of depending on a display. Same
+  class as the `ServiceProcess` and `CopyOnWriteArrayList` entries above:
+  anything the JSON-RPC reader shares with the UI also has to cope with the
+  UI being gone.
+- **(Fixed here)** `EventEmitter` kept its listeners in a plain `ArrayList`
+  while every one of its instances is subscribed on one thread and fired on
+  another: `onPeersChanged`/`onPresenceChanged` fire from the JSON-RPC reader
+  and `onSessionCreated`/`onSessionClosed` from an Eclipse `Job` worker, all
+  subscribed by views and command handlers on the UI thread, and
+  `onAuthAborted` is the mirror image — subscribed from the room-creation
+  `Job`, fired from a dialog on the UI thread. The defensive copy in `fire`
+  only looked safe: `new ArrayList<>(listeners)` ends up in
+  `Arrays.copyOf(elementData, size)`, two separate unsynchronized field
+  reads, so an `add` that grew the backing array between them produced a
+  snapshot padded with trailing `null`s and an NPE on the reader thread,
+  while a concurrent `remove` could shift an element into view twice and
+  invoke a listener twice. The quieter failure was plain visibility: with no
+  happens-before edge, a listener registered on the UI thread could be missed
+  entirely, leaving a Session view opened mid-join stale until the next
+  unrelated event. Now a `CopyOnWriteArrayList`, which makes iteration an
+  immutable snapshot (so `fire` no longer copies at all, and self-unsubscribe
+  from inside a callback stays safe). Same class as the
+  `CollaborationInstance.guests` entry above.
 - **(Fixed upstream, [open-collaboration-tools#207](https://github.com/eclipse-oct/open-collaboration-tools/commit/45c3beea3d2fc3390d50f94abbe38698aa355cca), 2026-08-24 — confirmed present 2026-09-11)**
   The discarded-`text`-on-guest behavior above used to mean a guest could seed
   the *host* with an empty string if the host hadn't opened that path yet.

@@ -46,9 +46,11 @@ import org.eclipse.oct.protocol.SessionData;
 import org.eclipse.oct.protocol.Workspace;
 import org.eclipse.oct.ui.SessionCreatedDialog;
 import org.eclipse.oct.util.EventEmitter;
+import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.progress.IProgressConstants;
 
 /**
  * Central session lifecycle manager.
@@ -125,17 +127,31 @@ public class SessionService {
 		}
 
 		String serverUrl = OCTSettings.getInstance().getDefaultServerURL();
-		ServiceProcess process = createServiceProcess(serverUrl);
-		ServiceProcess displaced = processes.put(project, process);
-		if (displaced != null) {
-			// A prior attempt for this project left its process behind (should not
-			// happen given the finally-block teardown below, but a retry must not
-			// silently orphan it if it ever does).
-			displaced.close();
+		CompletableFuture<SessionData> future;
+		try {
+			ServiceProcess process = createServiceProcess(serverUrl);
+			ServiceProcess displaced = processes.put(project, process);
+			if (displaced != null) {
+				// A prior attempt for this project left its process behind (should not
+				// happen given the finally-block teardown below, but a retry must not
+				// silently orphan it if it ever does).
+				displaced.close();
+			}
+			OCTService octService = process.getOctService();
+			future = octService.createRoom(workspace);
+		} catch (Exception e) {
+			// No job is scheduled yet, so its finally-block teardown never runs.
+			// Releasing the in-flight guard here is what keeps a failure
+			// recoverable: left set, the guard clause above drops every later
+			// attempt for this project without a word until Eclipse restarts.
+			pendingRoomCreations.remove(project);
+			ServiceProcess leftover = processes.remove(project);
+			if (leftover != null) {
+				leftover.close();
+			}
+			reportConnectFailure("Failed to create room.", e, serverUrl);
+			return;
 		}
-
-		OCTService octService = process.getOctService();
-		CompletableFuture<SessionData> future = octService.createRoom(workspace);
 
 		Job job = new Job("Creating OCT room...") {
 			@Override
@@ -154,14 +170,11 @@ public class SessionService {
 					}
 					sessionCreated(sessionData, serverUrl, project, monitor, true);
 					sessionEstablished = true;
-					Display.getDefault().asyncExec(() -> {
+					UIThread.asyncExec(() -> {
 						new SessionCreatedDialog(activeShellOrNull(), sessionData.roomId, serverUrl).open();
 					});
 				} catch (Exception e) {
-					LOG.log(Level.SEVERE, "Error creating room", e);
-					final String errMsg = describeConnectionError(e, serverUrl);
-					Display.getDefault().asyncExec(
-							() -> MessageDialog.openError(activeShellOrNull(), "OCT Error", "Failed to create room. " + errMsg));
+					return Status.error(reportConnectFailure("Failed to create room.", e, serverUrl), e);
 				} finally {
 					unsubscribeAbort.run();
 					pendingRoomCreations.remove(project);
@@ -176,6 +189,9 @@ public class SessionService {
 			}
 		};
 		job.setUser(true);
+		// The catch block reports failures itself; without this the platform's
+		// job-error handling opens a second error dialog on top of that one.
+		job.setProperty(IProgressConstants.NO_IMMEDIATE_ERROR_PROMPT_PROPERTY, Boolean.TRUE);
 		job.schedule();
 	}
 
@@ -205,10 +221,19 @@ public class SessionService {
 			return;
 		}
 
-		ServiceProcess process = createServiceProcess(serverUrl.get());
-		OCTService octService = process.getOctService();
-
-		CompletableFuture<SessionData> future = octService.joinRoom(roomToken);
+		ServiceProcess process;
+		CompletableFuture<SessionData> future;
+		try {
+			process = createServiceProcess(serverUrl.get());
+			OCTService octService = process.getOctService();
+			future = octService.joinRoom(roomToken);
+		} catch (Exception e) {
+			// See createRoom: the guard has to be released here, because the job
+			// whose finally block would otherwise do it never gets scheduled.
+			pendingRoomJoins.remove(joinKey);
+			reportConnectFailure("Failed to join room.", e, serverUrl.get());
+			return;
+		}
 
 		Job job = new Job("Joining OCT room...") {
 			@Override
@@ -233,10 +258,7 @@ public class SessionService {
 						sessionEstablished = true;
 					}
 				} catch (Exception e) {
-					LOG.log(Level.SEVERE, "Error joining room", e);
-					final String errMsg = describeConnectionError(e, serverUrl.get());
-					Display.getDefault().asyncExec(
-							() -> MessageDialog.openError(activeShellOrNull(), "OCT Error", "Failed to join room. " + errMsg));
+					return Status.error(reportConnectFailure("Failed to join room.", e, serverUrl.get()), e);
 				} finally {
 					unsubscribeAbort.run();
 					pendingRoomJoins.remove(joinKey);
@@ -248,6 +270,9 @@ public class SessionService {
 			}
 		};
 		job.setUser(true);
+		// The catch block reports failures itself; without this the platform's
+		// job-error handling opens a second error dialog on top of that one.
+		job.setProperty(IProgressConstants.NO_IMMEDIATE_ERROR_PROMPT_PROPERTY, Boolean.TRUE);
 		job.schedule();
 	}
 
@@ -370,7 +395,8 @@ public class SessionService {
 		try {
 			return PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
 		} catch (Exception e) {
-			return Display.getDefault().getActiveShell();
+			Display display = UIThread.display();
+			return display != null ? display.getActiveShell() : null;
 		}
 	}
 
@@ -403,6 +429,17 @@ public class SessionService {
 			cause = cause.getCause();
 		}
 		return e.getMessage() == null ? "" : ("Error: " + e.getMessage());
+	}
+
+	/**
+	 * Logs a failed connect attempt and puts it in front of the user. Returns
+	 * the message shown, so a job can carry the same wording in its status.
+	 */
+	private static String reportConnectFailure(String what, Exception e, String serverUrl) {
+		LOG.log(Level.SEVERE, what, e);
+		String message = what + " " + describeConnectionError(e, serverUrl);
+		UIThread.asyncExec(() -> MessageDialog.openError(activeShellOrNull(), "OCT Error", message));
+		return message;
 	}
 
 	private ServiceProcess createServiceProcess(String serverUrl) {

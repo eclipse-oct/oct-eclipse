@@ -8,6 +8,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.core.runtime.preferences.InstanceScope;
@@ -19,9 +20,11 @@ import org.osgi.service.prefs.BackingStoreException;
 public class OCTSettings {
 
 	private static final String PLUGIN_ID = "org.eclipse.oct";
-	private static final String KEY_SERVER_URL = "defaultServerURL";
+	static final String KEY_SERVER_URL = "defaultServerURL";
+	static final String KEY_AUTO_FOLLOW_HOST = "autoFollowHost";
 	private static final String KEY_STORED_TOKENS = "storedUserTokens";
 	public static final String DEFAULT_SERVER_URL = "https://api.open-collab.tools/";
+	public static final boolean DEFAULT_AUTO_FOLLOW_HOST = false;
 
 	private static OCTSettings INSTANCE;
 
@@ -40,9 +43,37 @@ public class OCTSettings {
 		return normalizeServerUrl(getPrefs().get(KEY_SERVER_URL, DEFAULT_SERVER_URL));
 	}
 
+	/** Used only for tests */
 	public void setDefaultServerURL(String url) {
 		getPrefs().put(KEY_SERVER_URL, normalizeServerUrl(url));
 		flush();
+	}
+
+	/**
+	 * Whether a guest starts out following the host. Reads the instance node
+	 * with an explicit fallback rather than going through the default scope:
+	 * {@code ScopedPreferenceStore} removes the key again whenever the user
+	 * sets it back to the default, so "absent" has to mean
+	 * {@link #DEFAULT_AUTO_FOLLOW_HOST}.
+	 */
+	public boolean isAutoFollowHost() {
+		return getPrefs().getBoolean(KEY_AUTO_FOLLOW_HOST, DEFAULT_AUTO_FOLLOW_HOST);
+	}
+
+	/**
+	 * Notifies on every change of the default server URL, however it was changed
+	 * (the preference page writes the node directly, not through
+	 * {@link #setDefaultServerURL(String)}). Returns a {@code Runnable} that
+	 * unregisters the listener.
+	 */
+	public Runnable addServerUrlChangeListener(Consumer<String> listener) {
+		IEclipsePreferences.IPreferenceChangeListener prefListener = event -> {
+			if (KEY_SERVER_URL.equals(event.getKey())) {
+				listener.accept(getDefaultServerURL());
+			}
+		};
+		getPrefs().addPreferenceChangeListener(prefListener);
+		return () -> getPrefs().removePreferenceChangeListener(prefListener);
 	}
 
 	/**

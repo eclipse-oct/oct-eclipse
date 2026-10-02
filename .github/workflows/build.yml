@@ -1,0 +1,202 @@
+# Verifies the plugin exactly the way AGENTS.md describes the local workflow:
+# `mvn clean verify` is the full check here — Tycho compile, PDE manifest
+# validation and the whole integration suite. There is no separate lint or
+# typecheck stage to add.
+#
+# Actions are pinned to commit SHAs rather than tags: a tag is mutable and can
+# be repointed at other code by whoever owns the action, so `@v7` is a standing
+# grant of write access to this build. The trailing comment records which
+# release each SHA is — keep the two in step when bumping.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      debug_logging:
+        description: >-
+          With DEBUG Logging. For debugging an existing push/PR run via
+          "Re-run jobs" instead — which has no input dialog — set the repo/
+          environment variable OCT_TESTS_DEBUG_LOGGING to "true" instead.
+        type: boolean
+        default: false
+
+# The suite is dominated by serial Eclipse test runtime (~3 minutes), so a
+# newer push to the same branch should cancel the run it just made obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The oct-service-process executable is a Node single-executable bundle, so it
+  # can only be produced on the platform it targets — hence one job per platform
+  # rather than one build that emits all three. `build` below collects them, so
+  # that a single Tycho run publishes an update site serving every platform
+  # instead of only the one CI happens to run on.
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            binary: oct-service-process-linux-x64
+          - runner: windows-latest
+            binary: oct-service-process-win32.exe
+          - runner: macos-latest
+            binary: oct-service-process-darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out open-collaboration-tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: eclipse-oct/open-collaboration-tools
+          ref: main
+          path: open-collaboration-tools
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: open-collaboration-tools/package-lock.json
+
+      # Same sequence org.eclipse.oct/pom.xml runs for a local build: the root
+      # build has to come first, create:executable only rebuilds its own
+      # workspace and links against the others' output.
+      - name: Build the service-process executable
+        working-directory: open-collaboration-tools
+        run: |
+          npm install
+          npm run build
+          npm run create:executable --workspace=open-collaboration-service-process
+
+      # The platform-suffixed name is what the binary fragments stage by and what
+      # ServiceProcess looks up at runtime; create:executable only ever emits the
+      # unsuffixed one.
+      - name: Rename to the platform-suffixed name
+        shell: bash
+        working-directory: open-collaboration-tools/packages/open-collaboration-service-process/bin
+        run: |
+          if [ -f oct-service-process.exe ]; then
+            mv oct-service-process.exe "${{ matrix.binary }}"
+          else
+            mv oct-service-process "${{ matrix.binary }}"
+          fi
+
+      - name: Upload the executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: service-process-${{ matrix.binary }}
+          path: open-collaboration-tools/packages/open-collaboration-service-process/bin/${{ matrix.binary }}
+          if-no-files-found: error
+
+  build:
+    needs: binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # Both repositories are checked out into subdirectories so they end up as
+      # siblings — the layout oct.project.path defaults to.
+      - name: Check out oct-eclipse
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: oct-eclipse
+
+      # A hard build dependency, not an optional extra: the OCT server the
+      # integration tests spin up is built from this checkout (see the antrun
+      # execution in org.eclipse.oct/pom.xml). The service-process executables
+      # come from the `binaries` jobs instead.
+      - name: Check out open-collaboration-tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: eclipse-oct/open-collaboration-tools
+          ref: main
+          path: open-collaboration-tools
+
+      # Flattened into one directory, which is what oct.binaries.dir expects:
+      # each binary fragment picks its own file out of it by name, and a file
+      # that is not there simply means that fragment packages empty.
+      - name: Download the service-process executables
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: service-process-*
+          merge-multiple: true
+          path: oct-binaries
+
+      # The maven cache also covers Tycho's p2 cache (~/.m2/repository/.cache/
+      # tycho), which is what keeps the Eclipse 2026-03 target platform from
+      # being re-downloaded on every run.
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Node 20+ per open-collaboration-tools' own engines field. The cache key
+      # tracks that repository's lockfile, since every npm install in this
+      # build runs there rather than here.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: open-collaboration-tools/package-lock.json
+
+      # xvfb-run because tycho-surefire runs with useUIHarness=true: the tests
+      # launch a real Eclipse workbench and need a display, even though the
+      # tests themselves never touch SWT. xvfb ships with the runner image.
+      # oct.project.path is passed explicitly rather than left to its default —
+      # it is the one build input that does not live in this repository, and an
+      # unnoticed wrong value would surface deep inside an antrun exec instead
+      # of here.
+      - name: Build and run the integration tests
+        working-directory: oct-eclipse
+        env:
+          # Two independent ways to opt into FINE, since "Re-run jobs" on an
+          # existing push/PR run has no input dialog and replays the original
+          # event payload unchanged:
+          #  - debug_logging: a fresh "Run workflow" dispatch with the
+          #    checkbox ticked.
+          #  - vars.OCT_TESTS_DEBUG_LOGGING: flip this repo/environment
+          #    variable (Settings → Secrets and variables → Actions →
+          #    Variables) to "true" first, then "Re-run jobs" on the very run
+          #    that needs debugging — vars are re-read on every run attempt,
+          #    unlike the frozen event payload.
+          # github.event.inputs (rather than the newer top-level `inputs`
+          # context) is the form that's safe to reference on triggers other
+          # than workflow_dispatch too — it's just absent there, evaluating to
+          # null. Both it and vars.* always arrive as strings, hence the
+          # explicit 'true' comparisons.
+          OCT_TESTS_LOG_LEVEL: ${{ (github.event.inputs.debug_logging == 'true' || vars.OCT_TESTS_DEBUG_LOGGING == 'true') && 'FINE' || 'INFO' }}
+        run: >
+          xvfb-run -a
+          mvn --batch-mode --no-transfer-progress clean verify
+          -Doct.project.path=${{ github.workspace }}/open-collaboration-tools
+          -Doct.binaries.dir=${{ github.workspace }}/oct-binaries
+          -Doct.tests.logLevel=$OCT_TESTS_LOG_LEVEL
+
+      - name: Upload p2 update site
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oct-p2-repository
+          path: oct-eclipse/org.eclipse.oct.repository/target/*.zip
+          if-no-files-found: error
+
+      # The surefire XML names the failing test; the workbench's own log is
+      # what explains an OSGi or UI-harness launch that died before any test
+      # got to run.
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-output
+          path: |
+            oct-eclipse/org.eclipse.oct.tests/target/surefire-reports/**
+            oct-eclipse/org.eclipse.oct.tests/target/work/data/.metadata/.log
+          if-no-files-found: ignore

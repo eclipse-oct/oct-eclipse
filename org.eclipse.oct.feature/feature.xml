@@ -35,4 +35,37 @@
       version="0.0.0"
       unpack="false"/>
 
+   <!-- The native oct-service-process ships per platform. The os/arch filters are
+        what keep an installation down to the single binary it can run, instead of
+        every platform's copy of a ~120 MB Node single-executable bundle. -->
+   <plugin
+      id="org.eclipse.oct.binary.linux.x86_64"
+      os="linux"
+      arch="x86_64"
+      download-size="0"
+      install-size="0"
+      version="0.0.0"
+      fragment="true"
+      unpack="false"/>
+
+   <plugin
+      id="org.eclipse.oct.binary.win32.x86_64"
+      os="win32"
+      arch="x86_64"
+      download-size="0"
+      install-size="0"
+      version="0.0.0"
+      fragment="true"
+      unpack="false"/>
+
+   <plugin
+      id="org.eclipse.oct.binary.macosx.aarch64"
+      os="macosx"
+      arch="aarch64"
+      download-size="0"
+      install-size="0"
+      version="0.0.0"
+      fragment="true"
+      unpack="false"/>
+
 </feature>

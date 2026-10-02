@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 import org.eclipse.core.resources.IFolder;
@@ -26,6 +27,7 @@ import org.eclipse.oct.internal.fs.OctFileSystem;
 import org.eclipse.oct.internal.fs.WorkspaceFileSystemServiceHolder;
 import org.eclipse.oct.internal.rpc.BaseMessageHandler;
 import org.eclipse.oct.internal.rpc.FileSystemService;
+import org.eclipse.oct.prefs.OCTSettings;
 import org.eclipse.oct.protocol.ClientTextSelection;
 import org.eclipse.oct.protocol.FileChange;
 import org.eclipse.oct.protocol.FileChangeEvent;
@@ -38,7 +40,7 @@ import org.eclipse.oct.protocol.TextDocumentInsert;
 import org.eclipse.oct.ui.PeerColors;
 import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.oct.util.OctPaths;
-import org.eclipse.swt.widgets.Display;
+import org.eclipse.oct.util.UIThread;
 
 /**
  * Per-session state holder.
@@ -67,6 +69,9 @@ public class CollaborationInstance {
 	public final List<Peer> guests = new CopyOnWriteArrayList<>();
 	public Peer host;
 	public Peer identity;
+
+	/** Guards the one-shot auto-follow arming in {@link #autoFollowHost()}. */
+	private final AtomicBoolean autoFollowConsidered = new AtomicBoolean(false);
 
 	public final PeerColors peerColors = new PeerColors();
 	public final EventEmitter<Void> onPeersChanged = new EventEmitter<>();
@@ -113,8 +118,36 @@ public class CollaborationInstance {
 		host = initData.host;
 		if (!isHost) {
 			initializeSharedFolders();
+			autoFollowHost();
 		}
 		onPeersChanged.fire(null);
+	}
+
+	/**
+	 * Arms follow-the-host for a guest, if the user left that preference on.
+	 * {@code init} is the first point where the host's peer id is known, which
+	 * is what follow mode keys on.
+	 *
+	 * <p>
+	 * Guests only. On a host the very same {@code EditorManager} flag means
+	 * the opposite thing — "let a guest opening a file steal my editor focus"
+	 * (see {@link EditorManager#guestOpenedEditor}) — and that stays off.
+	 *
+	 * <p>
+	 * Armed at most once per session, so a re-delivered {@code init} cannot
+	 * silently switch following back on after the user unchecked it in the
+	 * Session view.
+	 */
+	private void autoFollowHost() {
+		if (host == null || host.id == null || editorManager == null) {
+			return;
+		}
+		if (!autoFollowConsidered.compareAndSet(false, true)) {
+			return;
+		}
+		if (OCTSettings.getInstance().isAutoFollowHost()) {
+			editorManager.followPeer(host.id);
+		}
 	}
 
 	public void peerJoined(Peer peer) {
@@ -232,7 +265,7 @@ public class CollaborationInstance {
 			return;
 		}
 		invalidateGuestCache(protocolPath);
-		Display.getDefault().syncExec(() -> {
+		UIThread.syncExec(() -> {
 			boolean open = editorManager != null && editorManager.saveIfOpen(protocolPath, content);
 			if (!open) {
 				refreshGuestPath(protocolPath);
@@ -246,7 +279,7 @@ public class CollaborationInstance {
 		}
 		// Must not saveIfOpen on the JSON-RPC reader thread: the UI save may
 		// stat the oct:// store and would deadlock the same connection.
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			boolean needProjectRefresh = false;
 			for (FileChange change : event.changes) {
 				invalidateGuestCache(change.path);

@@ -6,6 +6,7 @@ package org.eclipse.oct.ui;
 
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.TitleAreaDialog;
+import org.eclipse.swt.SWT;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
@@ -49,11 +50,32 @@ public class SessionCreatedDialog extends TitleAreaDialog {
 		getShell().setDefaultButton(getButton(IDialogConstants.CANCEL_ID));
 	}
 
+	/**
+	 * Sizes to the shell's own preferred height, bypassing the floor that
+	 * {@code TitleAreaDialog.getInitialSize()} applies.
+	 * <p>
+	 * That floor is {@code MIN_DIALOG_HEIGHT} — 150 dialog units, so roughly
+	 * 19x the font height — and it exists for dialogs that put real content
+	 * into the work area. This one leaves the work area empty: everything it
+	 * shows lives in the title area and the button bar. The floor therefore
+	 * only adds dead space below the separator, which is why this method used
+	 * to cap the height at 70 dialog units instead. A cap is the wrong tool
+	 * though: a dialog unit scales purely with the font height, while the
+	 * height actually needed is mostly fixed (shell trim, margins, button
+	 * padding), so below roughly a 16px dialog font the cap undercut the real
+	 * requirement and cut the button bar off — unrecoverably, since this
+	 * dialog is not resizable.
+	 * <p>
+	 * {@code Window.getInitialSize()} is exactly the unfloored preferred size
+	 * ({@code shell.computeSize}), and it is correct at every font size. The
+	 * width keeps {@code super}'s value: {@code MIN_DIALOG_WIDTH} is welcome
+	 * here, and that value still grows for an unusually long room id.
+	 */
 	@Override
 	protected Point getInitialSize() {
-		Point initialSize = super.getInitialSize();
-		initialSize.y = Math.min(convertVerticalDLUsToPixels(70), initialSize.y);
-		return initialSize;
+		Point withMinimums = super.getInitialSize();
+		Point preferred = getShell().computeSize(SWT.DEFAULT, SWT.DEFAULT, true);
+		return new Point(withMinimums.x, preferred.y);
 	}
 
 	@Override

@@ -51,9 +51,9 @@ import org.eclipse.oct.protocol.TextDocumentInsert;
 import org.eclipse.oct.ui.PeerColors;
 import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.oct.util.OctPaths;
+import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.RGB;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
@@ -120,7 +120,13 @@ public class EditorManager implements IPartListener2 {
 
 	private final AtomicBoolean disposed = new AtomicBoolean(false);
 
-	public String followingPeerId = null;
+	/**
+	 * Volatile because follow state is no longer only toggled from the Session
+	 * view on the UI thread: auto-follow arms it from the JSON-RPC reader when
+	 * {@code init} names the host, while {@code updateTextSelection} and the
+	 * view read it on the UI thread.
+	 */
+	private volatile String followingPeerId = null;
 
 	/** Last known document path per peer (from selection or editorOpened). */
 	private final Map<String, String> peerDocumentPaths = new ConcurrentHashMap<>();
@@ -151,7 +157,7 @@ public class EditorManager implements IPartListener2 {
 	}
 
 	private void registerPartListener() {
-		Display.getDefault().syncExec(() -> {
+		UIThread.syncExec(() -> {
 			if (!PlatformUI.isWorkbenchRunning()) {
 				return;
 			}
@@ -610,7 +616,7 @@ public class EditorManager implements IPartListener2 {
 		if (updates == null || updates.length == 0) {
 			return;
 		}
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			EditorState state = findEditorState(octPath);
 			if (state == null) {
 				return;
@@ -667,7 +673,7 @@ public class EditorManager implements IPartListener2 {
 	 * EditorManager.updateTextSelection.
 	 */
 	public void updateTextSelection(String octPath, ClientTextSelection[] selections) {
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			// Record each peer's current document (for the Session View "File" column)
 			// and react to follow-mode *before* checking for a local EditorState —
 			// otherwise both only ever worked for paths we already happened to have
@@ -770,7 +776,7 @@ public class EditorManager implements IPartListener2 {
 
 	private void scheduleHideNameTags(EditorState state) {
 		int epoch = nameTagEpoch.merge(state, 1, Integer::sum);
-		Display.getDefault().timerExec(NAME_TAG_VISIBLE_MS, () -> {
+		UIThread.timerExec(NAME_TAG_VISIBLE_MS, () -> {
 			if (disposed.get() || !Integer.valueOf(epoch).equals(nameTagEpoch.get(state))) {
 				return;
 			}
@@ -802,7 +808,7 @@ public class EditorManager implements IPartListener2 {
 	 * tells the service process what a host <em>editor</em> holds.
 	 */
 	public void guestOpenedEditor(String documentPath) {
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			String path = OctPaths.normalize(documentPath);
 			IFile file = eclipseFile(path);
 			if (file == null) {
@@ -940,7 +946,7 @@ public class EditorManager implements IPartListener2 {
 		if (peerId.equals(followingPeerId)) {
 			stopFollowing();
 		}
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			for (EditorState state : editorStates.values()) {
 				removePeerAnnotations(state, peerId);
 			}
@@ -961,7 +967,7 @@ public class EditorManager implements IPartListener2 {
 			return false;
 		}
 		AtomicBoolean handled = new AtomicBoolean(false);
-		Display.getDefault().syncExec(() -> {
+		UIThread.syncExec(() -> {
 			EditorState state = findEditorState(path);
 			if (state == null) {
 				return;
@@ -1047,7 +1053,7 @@ public class EditorManager implements IPartListener2 {
 		peerDocumentPaths.clear();
 		followingPeerId = null;
 		followGuestSelection = false;
-		Display.getDefault().asyncExec(() -> {
+		UIThread.asyncExec(() -> {
 			if (PlatformUI.isWorkbenchRunning()) {
 				try {
 					IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
