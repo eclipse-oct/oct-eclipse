@@ -4,6 +4,10 @@
  */
 package org.eclipse.oct.ui.commands;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.regex.Pattern;
+
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.jface.dialogs.InputDialog;
@@ -37,21 +41,53 @@ public class JoinSessionHandler extends OctSessionHandler {
 	}
 
 	/**
-	 * A share URL is expected to carry {@code ://}; a bare room ID is a single
-	 * token. Anything else with a slash in it (e.g. a filesystem path pasted
-	 * by mistake) isn't either, and would otherwise be sent verbatim as the
-	 * {@code room/joinRoom} path segment — a leading slash doubles up with the
-	 * route's own, producing a 404 whose raw HTML body then surfaces in the
-	 * error dialog.
+	 * Room IDs are server-generated nanoids restricted to {@code [0-9A-Za-z]}
+	 * (open-collaboration-server's {@code generateSecureId}); the VS Code
+	 * extension's {@code RoomUri.parse} validates pasted input against the
+	 * same alphabet ({@code ^[a-zA-Z0-9]+$}) rather than merely blacklisting
+	 * characters known to break routing. This isn't a security boundary —
+	 * any other client can send the server an arbitrary room id directly —
+	 * but matching that whitelist still catches a mistake (e.g. a pasted
+	 * filesystem path) before it goes out as the {@code room/joinRoom} path
+	 * segment, where a bare {@code /} would otherwise double up with the
+	 * route's own and come back as a raw-HTML 404.
 	 */
-	private static String validateRoomToken(String input) {
+	private static final Pattern ROOM_ID = Pattern.compile("^[a-zA-Z0-9]+$");
+
+	static String validateRoomToken(String input) {
 		if (input == null || input.isBlank()) {
 			return "Room ID cannot be empty";
 		}
 		String trimmed = input.trim();
-		if (!trimmed.contains("://") && trimmed.contains("/")) {
-			return "That doesn't look like a room ID or URL";
+		if (trimmed.contains("://")) {
+			return validateRoomUrl(trimmed);
 		}
-		return null;
+		return ROOM_ID.matcher(trimmed).matches() ? null : "Room ID can only contain letters and digits";
+	}
+
+	/**
+	 * Mirrors {@link SessionService#joinRoom}'s own URL parsing exactly (same
+	 * {@link URI} constructor, same {@code getFragment()} check) so a value
+	 * accepted here is guaranteed to carry a usable room id out the other
+	 * end. Without this, a URL with no fragment, an unparsable URL, or a
+	 * fragment containing e.g. a '/' all previously fell through
+	 * {@code joinRoom}'s "not a valid URL, use token as-is" fallback and got
+	 * sent to the server as the literal {@code room/joinRoom} path segment,
+	 * producing the exact same raw-HTML-404 class of error this validator
+	 * exists to prevent — just one step removed, after the dialog had
+	 * already accepted it.
+	 */
+	private static String validateRoomUrl(String url) {
+		URI uri;
+		try {
+			uri = new URI(url);
+		} catch (URISyntaxException e) {
+			return "Not a valid URL";
+		}
+		String fragment = uri.getFragment();
+		if (fragment == null || fragment.isBlank()) {
+			return "URL must include a room id after '#'";
+		}
+		return ROOM_ID.matcher(fragment).matches() ? null : "Room ID in the URL can only contain letters and digits";
 	}
 }

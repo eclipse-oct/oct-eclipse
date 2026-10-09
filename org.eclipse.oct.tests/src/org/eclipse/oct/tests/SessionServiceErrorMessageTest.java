@@ -99,4 +99,24 @@ class SessionServiceErrorMessageTest {
 		assertTimeoutPreemptively(Duration.ofSeconds(2),
 				() -> assertEquals("Error: b", SessionService.describeConnectionError(b, SERVER_URL)));
 	}
+
+	@Test
+	@DisplayName("an HTML error page (e.g. Express' 404 for a malformed room ID) is reduced to its <pre> summary")
+	void htmlErrorPageIsReducedToPreSummary() {
+		Exception e = new ExecutionException(new RuntimeException("Request room/joinRoom failed with message: "
+				+ "Failed to join room: Error: <!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+				+ "<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n"
+				+ "<pre>Cannot POST /api/session/join//Users/dhuebner/runtime-EclipseApplication-guest/</pre>\n"
+				+ "</body>\n</html>"));
+		assertEquals(
+				"The server rejected the request: Cannot POST /api/session/join//Users/dhuebner/runtime-EclipseApplication-guest/",
+				SessionService.describeConnectionError(e, SERVER_URL));
+	}
+
+	@Test
+	@DisplayName("an HTML error page without a <pre> summary falls back to a generic rejection message")
+	void htmlErrorPageWithoutPreFallsBackToGenericMessage() {
+		Exception e = new RuntimeException("<html><body>Internal Server Error</body></html>");
+		assertEquals("The server rejected the request.", SessionService.describeConnectionError(e, SERVER_URL));
+	}
 }
