@@ -54,7 +54,7 @@ public class JoinSessionHandler extends OctSessionHandler {
 	 */
 	private static final Pattern ROOM_ID = Pattern.compile("^[a-zA-Z0-9]+$");
 
-	static String validateRoomToken(String input) {
+	public static String validateRoomToken(String input) {
 		if (input == null || input.isBlank()) {
 			return "Room ID cannot be empty";
 		}

@@ -22,19 +22,19 @@ import org.eclipse.core.runtime.Path;
  *
  * <pre>
  * Host Eclipse IFile          /test-oct/src/A.java
- *   → protocol                test-oct/src/A.java
+ *   -> protocol                test-oct/src/A.java
  *
  * Eclipse guest temp project  /test-oct-oct-1723/test-oct/src/A.java
- *   → protocol (proj-rel)     test-oct/src/A.java
+ *   -> protocol (proj-rel)     test-oct/src/A.java
  *
  * VS Code guest URI           oct:///test-oct/src/A.java
- *   → protocol                test-oct/src/A.java
+ *   -> protocol                test-oct/src/A.java
  *
  * VS Code fileSystem/*        src/A.java   (shared-root prefix already stripped)
- *   → host project-relative   src/A.java
+ *   -> host project-relative   src/A.java
  *
  * oct://&lt;roomId&gt;/test-oct/src/A.java
- *   → protocol                test-oct/src/A.java
+ *   -> protocol                test-oct/src/A.java
  * </pre>
  */
 public final class OctPaths {
@@ -81,7 +81,7 @@ public final class OctPaths {
 	}
 
 	/**
-	 * Host resource → protocol path. {@link IResource#getFullPath()} is
+	 * Host resource -> protocol path. {@link IResource#getFullPath()} is
 	 * workspace-relative and includes a leading slash plus the project name,
 	 * which <em>is</em> the shared-root name the plugin advertises.
 	 */
@@ -93,7 +93,7 @@ public final class OctPaths {
 	}
 
 	/**
-	 * Guest resource in the temp project → protocol path. The temp project is
+	 * Guest resource in the temp project -> protocol path. The temp project is
 	 * named {@code <workspace>-oct-<ts>}; the shared root is a linked folder
 	 * inside it, so {@link IResource#getProjectRelativePath()} is already
 	 * {@code sharedRoot/relative}.
@@ -110,14 +110,14 @@ public final class OctPaths {
 	}
 
 	/**
-	 * Protocol (or VS Code FS) path → path relative to the hosted Eclipse
+	 * Protocol (or VS Code FS) path -> path relative to the hosted Eclipse
 	 * project, for {@code IProject.findMember} / {@code getFile}.
 	 *
 	 * <ul>
-	 * <li>{@code test-oct/src/A.java} + project {@code test-oct} → {@code src/A.java}</li>
-	 * <li>{@code test-oct} + project {@code test-oct} → {@code ""} (the project itself)</li>
-	 * <li>{@code src/A.java} (VS Code {@code fileSystem/*}) → {@code src/A.java}</li>
-	 * <li>{@code /test-oct/src/A.java} → {@code src/A.java}</li>
+	 * <li>{@code test-oct/src/A.java} + project {@code test-oct} -> {@code src/A.java}</li>
+	 * <li>{@code test-oct} + project {@code test-oct} -> {@code ""} (the project itself)</li>
+	 * <li>{@code src/A.java} (VS Code {@code fileSystem/*}) -> {@code src/A.java}</li>
+	 * <li>{@code /test-oct/src/A.java} -> {@code src/A.java}</li>
 	 * </ul>
 	 */
 	public static String toHostProjectRelative(String protocolPath, String projectName) {
@@ -140,7 +140,7 @@ public final class OctPaths {
 		return new Path(toHostProjectRelative(protocolPath, projectName));
 	}
 
-	/** {@code oct://roomId/sharedRoot/rel} → {@code sharedRoot/rel}. */
+	/** {@code oct://roomId/sharedRoot/rel} -> {@code sharedRoot/rel}. */
 	public static String fromOctUri(URI uri) {
 		if (uri == null) {
 			return "";
@@ -149,7 +149,7 @@ public final class OctPaths {
 	}
 
 	/**
-	 * Protocol path → {@code oct://<sessionId>/<path>}. {@code path} is
+	 * Protocol path -> {@code oct://<sessionId>/<path>}. {@code path} is
 	 * normalized first so a leading slash on the input cannot produce
 	 * {@code oct://id//foo}.
 	 */

@@ -8,11 +8,3 @@ public class PeerMetaData {
 	public EncryptionMetaData encryption;
 	public CompressionMetaData compression;
 }
-
-class EncryptionMetaData {
-	public String publicKey;
-}
-
-class CompressionMetaData {
-	public String[] supported;
-}

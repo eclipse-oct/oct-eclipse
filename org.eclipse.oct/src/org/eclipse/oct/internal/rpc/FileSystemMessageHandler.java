@@ -97,7 +97,7 @@ public class FileSystemMessageHandler extends BaseMessageHandler {
 		if (wfs == null) {
 			return CompletableFuture.completedFuture(null);
 		}
-		// Guest save (VS Code FileSystemProvider.writeFile → host). If the file
+		// Guest save (VS Code FileSystemProvider.writeFile -> host). If the file
 		// is open in a dirty editor, save through the editor so dirty state is
 		// cleared instead of writing underneath it.
 		if (em == null) {

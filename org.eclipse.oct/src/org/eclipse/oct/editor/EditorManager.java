@@ -4,22 +4,14 @@
  */
 package org.eclipse.oct.editor;
 
-import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.eclipse.core.resources.IFile;
@@ -33,27 +25,15 @@ import org.eclipse.jface.text.DocumentRewriteSessionType;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentExtension4;
 import org.eclipse.jface.text.ITextSelection;
-import org.eclipse.jface.text.ITextViewerExtension2;
-import org.eclipse.jface.text.Position;
-import org.eclipse.jface.text.source.Annotation;
-import org.eclipse.jface.text.source.AnnotationModel;
-import org.eclipse.jface.text.source.AnnotationPainter;
-import org.eclipse.jface.text.source.IAnnotationModel;
-import org.eclipse.jface.text.source.IAnnotationModelExtension;
 import org.eclipse.jface.text.source.ISourceViewer;
-import org.eclipse.jface.viewers.IPostSelectionProvider;
-import org.eclipse.jface.viewers.ISelectionProvider;
 import org.eclipse.oct.internal.fs.OctFileStore;
 import org.eclipse.oct.internal.rpc.OCTService;
 import org.eclipse.oct.protocol.ClientTextSelection;
-import org.eclipse.oct.protocol.FileContent;
 import org.eclipse.oct.protocol.TextDocumentInsert;
 import org.eclipse.oct.ui.PeerColors;
 import org.eclipse.oct.util.EventEmitter;
 import org.eclipse.oct.util.OctPaths;
 import org.eclipse.oct.util.UIThread;
-import org.eclipse.swt.SWT;
-import org.eclipse.swt.graphics.RGB;
 import org.eclipse.ui.IEditorDescriptor;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
@@ -66,60 +46,32 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.editors.text.EditorsUI;
 import org.eclipse.ui.ide.IDE;
-import org.eclipse.ui.texteditor.AbstractTextEditor;
 import org.eclipse.ui.texteditor.IDocumentProvider;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 /**
- * Full M4 EditorManager: tracks open editors, syncs documents and selections,
- * renders peer cursors/selections via AnnotationPainter, supports follow-mode.
+ * Tracks open editors and syncs their documents and selections with peers.
+ * Per-editor wiring lives in {@link TrackedEditor}, peer cursor/selection
+ * drawing in {@link PeerAnnotationRenderer}; this class owns the path->editor
+ * map, the seed gate and follow-mode.
  */
 public class EditorManager implements IPartListener2 {
 
 	private static final Logger LOG = Logger.getLogger(EditorManager.class.getName());
-	private static final Object PEER_MODEL_KEY = new Object();
-
-	/** Max time to wait for an initial content seed to confirm before giving up. */
-	private static final long SEED_SYNC_TIMEOUT_MS = 10_000;
-	private static final long SEED_SYNC_POLL_INTERVAL_MS = 100;
-	private static final int NAME_TAG_VISIBLE_MS = 1900;
 
 	private final OCTService remoteService;
 	private final IProject project;
-	private final PeerColors peerColors;
-	private Function<String, String> peerNameLookup = id -> id;
+	private final PeerAnnotationRenderer annotations;
+	private final DocumentSeedGate seedGate;
 
 	/**
-	 * Per editor-path state. Concurrent because {@link #confirmSeedThenEnableUpdates}
-	 * polls {@link #findEditorState} from a background thread while the UI thread
+	 * Per editor-path state. Concurrent because {@link DocumentSeedGate} polls
+	 * {@link #findEditorState} from a background thread while the UI thread
 	 * mutates the map in {@link #registerEditor}/{@link #unregisterEditor} — a racy
 	 * {@code null} there used to leave {@code DocumentSyncListener.pending}
 	 * permanently unflushed (edits only ever reaching peers via a later save).
 	 */
-	private final Map<String, EditorState> editorStates = new ConcurrentHashMap<>();
-	/**
-	 * Bumps on each selection update so a stale hide-timer cannot clear a fresh
-	 * name tag.
-	 */
-	private final Map<EditorState, Integer> nameTagEpoch = new IdentityHashMap<>();
-
-	/**
-	 * Paths this peer has already pushed to Yjs from {@link #guestOpenedEditor}'s
-	 * no-UI path, i.e. without a local editor being open. Purely a
-	 * send-it-once guard for that method: a second guest opening the same path
-	 * before the host does must not trigger another disk read and push.
-	 *
-	 * <p>
-	 * It deliberately does <em>not</em> suppress {@link #trackEditor}'s own
-	 * {@code openDocument} — that call is what tells the service process (via
-	 * {@code YjsNormalizedTextDocument.attachLocalDocument}) what this editor's
-	 * buffer actually holds, and every offset it later reports is computed
-	 * against that string. Skipping it corrupts offsets rather than saving work,
-	 * and upstream already guards against a redundant reseed
-	 * ({@code if (YjsDoc.getText(path).length > 0) return;} in
-	 * {@code CollaborationInstance.registerYjsObject}).
-	 */
-	private final Set<String> seededPaths = ConcurrentHashMap.newKeySet();
+	private final Map<String, TrackedEditor> editorStates = new ConcurrentHashMap<>();
 
 	private final AtomicBoolean disposed = new AtomicBoolean(false);
 
@@ -146,7 +98,8 @@ public class EditorManager implements IPartListener2 {
 	public EditorManager(OCTService remoteService, IProject project, boolean isHost, PeerColors peerColors) {
 		this.remoteService = remoteService;
 		this.project = project;
-		this.peerColors = peerColors;
+		this.annotations = new PeerAnnotationRenderer(peerColors);
+		this.seedGate = new DocumentSeedGate(remoteService, this::findEditorState);
 		this.isHost = isHost;
 		registerPartListener();
 	}
@@ -156,7 +109,7 @@ public class EditorManager implements IPartListener2 {
 	 * to the id itself when unset (tests / peers not yet in init).
 	 */
 	public void setPeerNameLookup(Function<String, String> peerNameLookup) {
-		this.peerNameLookup = peerNameLookup != null ? peerNameLookup : id -> id;
+		annotations.setPeerNameLookup(peerNameLookup);
 	}
 
 	private void registerPartListener() {
@@ -177,7 +130,7 @@ public class EditorManager implements IPartListener2 {
 	 * {@link IPartListener2#partOpened} only ever fires for editors opened
 	 * <em>after</em> this listener is attached, and switching to an already-open
 	 * tab fires {@code partActivated}, which bails when there is no
-	 * {@link EditorState} yet. Without this sweep a file the user had open before
+	 * {@link TrackedEditor} yet. Without this sweep a file the user had open before
 	 * hosting/joining stays completely unsynced for the whole session: no
 	 * {@link DocumentSyncListener}, no {@link SelectionSyncListener}, no peer
 	 * annotations, and no {@code awareness/openDocument} seed — so peer cursors
@@ -247,105 +200,7 @@ public class EditorManager implements IPartListener2 {
 		// never learns we opened this document until we happen to move the caret,
 		// mirroring VS Code's onDidChangeActiveTextEditor handling (see partActivated).
 		sendCurrentSelection(octPath, textEditor);
-		// A path already pushed by guestOpenedEditor's no-UI path still has to be
-		// announced here: only openDocument tells the service process what *this
-		// editor's buffer* holds (attachLocalDocument), and all the offsets it
-		// later reports are computed against that string. It is also what keeps
-		// the ADR-0002 seed gate on this path. Upstream ignores the redundant
-		// content itself, so this is cheap rather than a full-document replace.
-		seededPaths.remove(octPath);
-
-		IDocument document = textEditor.getDocumentProvider().getDocument(textEditor.getEditorInput());
-		String text = document != null ? document.get() : "";
-		if (text.isEmpty()) {
-			// Defend against the document provider not having finished loading yet
-			// (e.g. when the part was just force-opened for a guest) — fall back to
-			// reading the resource directly rather than seeding Yjs with a blank doc.
-			try {
-				String diskText = readFileContent(file);
-				if (!diskText.isEmpty()) {
-					text = diskText;
-				}
-			} catch (Exception e) {
-				LOG.warning("Failed to read fallback content for: " + octPath + " - " + e.getMessage());
-			}
-		}
-		// Seed Yjs with real content. Empty string would make
-		// guests re-read a blank buffer when switching tabs or on FileChange Update.
-		remoteService.openDocument("text", octPath, text);
-		confirmSeedThenEnableUpdates(octPath, text);
-	}
-
-	/**
-	 * {@code awareness/openDocument} is fire-and-forget, and for non-host peers the
-	 * content it carries is applied to the shared Yjs document asynchronously (the
-	 * local replica only catches up once the seed round-trips through the OCT
-	 * server — see {@code CollaborationInstance.registerYjsObject} in
-	 * open-collaboration-service-process, which discards a guest's own {@code text}
-	 * argument and simply notifies the host). If a local edit is sent before that
-	 * sync lands, its offset is computed against an empty/stale replica; Yjs
-	 * silently clamps out-of-range offsets instead of rejecting them, corrupting
-	 * the edit for every peer.
-	 *
-	 * <p>
-	 * To close that race, {@code DocumentSyncListener} queues local edits made
-	 * before its seed confirms instead of sending them (see
-	 * {@link DocumentSyncListener#enableAndFlush()}) and only flushes them here,
-	 * once {@code awareness/getDocumentContent} confirms this peer's own replica
-	 * already holds {@code expectedContent}. Runs off the UI thread since it polls
-	 * with blocking gets; if the seed still hasn't confirmed after
-	 * {@link #SEED_SYNC_TIMEOUT_MS}, updates are enabled anyway (best effort) so a
-	 * slow/unreachable server doesn't permanently freeze the editor's outgoing sync
-	 * — logged as a warning since it means edits until it also settles may still
-	 * race.
-	 */
-	private void confirmSeedThenEnableUpdates(String octPath, String expectedContent) {
-		String normalizedExpected = expectedContent.replace("\r\n", "\n");
-		CompletableFuture.runAsync(() -> {
-			long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(SEED_SYNC_TIMEOUT_MS);
-			do {
-				if (disposed.get()) {
-					return;
-				}
-				if (findEditorState(octPath) == null) {
-					// The editor was closed (or never registered) while we polled.
-					// Log it: silently returning here leaves DocumentSyncListener
-					// unconfirmed forever, so queued edits are never flushed and the
-					// file appears to only sync on save.
-					LOG.warning("Seed confirmation for '" + octPath
-							+ "' abandoned: no editor state registered; outgoing sync stays gated for it");
-					return;
-				}
-				try {
-					FileContent content = remoteService.getDocumentContent(octPath).get(2, TimeUnit.SECONDS);
-					String actual = (content != null && content.content != null)
-							? new String(content.content, StandardCharsets.UTF_8).replace("\r\n", "\n")
-							: null;
-					if (normalizedExpected.equals(actual)) {
-						enableSendUpdates(octPath);
-						return;
-					}
-				} catch (Exception e) {
-					LOG.log(Level.FINE, "Seed confirmation check failed for " + octPath, e);
-				}
-				try {
-					Thread.sleep(SEED_SYNC_POLL_INTERVAL_MS);
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
-					return;
-				}
-			} while (System.nanoTime() < deadline);
-			LOG.warning("Seed for '" + octPath + "' did not confirm sync within " + SEED_SYNC_TIMEOUT_MS
-					+ "ms; enabling live updates anyway (edits sent before the seed lands may still be corrupted)");
-			enableSendUpdates(octPath);
-		});
-	}
-
-	private void enableSendUpdates(String octPath) {
-		EditorState state = findEditorState(octPath);
-		if (state != null) {
-			state.docListener.enableAndFlush();
-		}
+		seedGate.seedFromEditor(octPath, textEditor, file);
 	}
 
 	private String octPath(IFile file) {
@@ -466,149 +321,27 @@ public class EditorManager implements IPartListener2 {
 	 * so callers can gate actions that must happen exactly once per document.
 	 */
 	private boolean registerEditor(String octPath, ITextEditor editor) {
-		EditorState existing = findEditorState(octPath);
-		if (existing != null) {
+		if (findEditorState(octPath) != null) {
 			return false;
 		}
-
-		IDocument document = editor.getDocumentProvider().getDocument(editor.getEditorInput());
-		if (document == null) {
+		TrackedEditor tracked = TrackedEditor.attach(octPath, editor, remoteService);
+		if (tracked == null) {
 			return false;
 		}
-
-		// Pure echo guard now (see DocumentSyncListener's class doc): toggled off
-		// only while applying a remote edit or save-triggered document.set() to
-		// this same IDocument, so defaults to enabled. Seed-confirmation gating is
-		// handled independently by DocumentSyncListener's own queue — see
-		// confirmSeedThenEnableUpdates() / DocumentSyncListener.enableAndFlush().
-		AtomicBoolean sendUpdates = new AtomicBoolean(true);
-
-		DocumentSyncListener docListener = new DocumentSyncListener(octPath, remoteService, sendUpdates);
-		document.addDocumentListener(docListener);
-
-		ISourceViewer viewer = getSourceViewer(editor);
-
-		// Remember which provider the listener actually went on: it is added either
-		// as a *post*-selection listener on the editor's own provider or as a plain
-		// one on the viewer's, and unregisterEditor has to undo exactly that pairing
-		// (removing it from the wrong provider leaves it firing after the session).
-		SelectionSyncListener selListener = new SelectionSyncListener(octPath, remoteService, "self");
-		IPostSelectionProvider postSelectionProvider = null;
-		ISelectionProvider viewerSelectionProvider = null;
-		if (editor.getSelectionProvider() instanceof IPostSelectionProvider postSelect) {
-			postSelectionProvider = postSelect;
-			postSelect.addPostSelectionChangedListener(selListener);
-		} else if (viewer != null) {
-			viewerSelectionProvider = viewer.getSelectionProvider();
-			viewerSelectionProvider.addSelectionChangedListener(selListener);
-		}
-
-		// Attach peer annotation model
-		AnnotationModel peerModel = new AnnotationModel();
-		if (viewer != null) {
-			IAnnotationModel baseModel = viewer.getAnnotationModel();
-			if (baseModel instanceof IAnnotationModelExtension ext) {
-				ext.addAnnotationModel(PEER_MODEL_KEY, peerModel);
-			}
-		}
-
-		// Install drawing strategies
-		PeerCursorDrawingStrategy cursorStrategy = new PeerCursorDrawingStrategy();
-		PeerSelectionDrawingStrategy selectionStrategy = new PeerSelectionDrawingStrategy();
-		AnnotationPainter painter = viewer != null ? installAnnotationPainter(viewer, cursorStrategy, selectionStrategy)
-				: null;
-
-		editorStates.put(octPath, new EditorState(editor, document, peerModel, docListener, selListener, sendUpdates,
-				cursorStrategy, selectionStrategy, postSelectionProvider, viewerSelectionProvider, painter));
-		LOG.info("Registered editor for: " + octPath);
+		editorStates.put(octPath, tracked);
 		return true;
 	}
 
 	private void unregisterEditor(String octPath) {
-		EditorState state = findEditorState(octPath);
+		TrackedEditor state = findEditorState(octPath);
 		if (state == null) {
 			return;
 		}
-
-		state.document.removeDocumentListener(state.docListener);
-		// Mirror registerEditor exactly: the listener sits on whichever provider it
-		// was added to, not necessarily the viewer's.
-		if (state.selListener != null) {
-			if (state.postSelectionProvider != null) {
-				state.postSelectionProvider.removePostSelectionChangedListener(state.selListener);
-			}
-			if (state.viewerSelectionProvider != null) {
-				state.viewerSelectionProvider.removeSelectionChangedListener(state.selListener);
-			}
-		}
-		ISourceViewer viewer = getSourceViewer(state.editor);
-		if (viewer != null) {
-			IAnnotationModel baseModel = viewer.getAnnotationModel();
-			if (baseModel instanceof IAnnotationModelExtension ext) {
-				ext.removeAnnotationModel(PEER_MODEL_KEY);
-			}
-			// Detach the painter before disposing the strategies below — a painter
-			// left on the viewer can still be asked to draw, and would then use the
-			// strategies' already-disposed Color/Font.
-			if (state.painter != null && viewer instanceof ITextViewerExtension2 ext2) {
-				ext2.removePainter(state.painter);
-			}
-		}
-		if (state.painter != null) {
-			state.painter.dispose();
-		}
-		state.cursorStrategy.dispose();
-		state.selectionStrategy.dispose();
+		state.detach();
 		editorStates.values().remove(state);
-		nameTagEpoch.remove(state);
+		annotations.forget(state);
 	}
 
-	/**
-	 * {@code ITextEditor} has no public accessor for its underlying
-	 * {@code ISourceViewer}. {@code getAdapter(ISourceViewer.class)} only works for
-	 * editors that explicitly register that adapter, which excludes e.g. the
-	 * Generic Editor's {@code ExtensionBasedTextEditor} (used for plain text files
-	 * with no dedicated editor). Every Eclipse text editor, including that one,
-	 * does extend {@code AbstractTextEditor} though, which declares a protected
-	 * no-arg {@code getSourceViewer()} — fall back to that via reflection.
-	 */
-	private static ISourceViewer getSourceViewer(ITextEditor editor) {
-		if (!(editor instanceof AbstractTextEditor)) {
-			return null;
-		}
-		try {
-			Method method = AbstractTextEditor.class.getDeclaredMethod("getSourceViewer");
-			method.setAccessible(true);
-			return (ISourceViewer) method.invoke(editor);
-		} catch (Exception e) {
-			LOG.warning("Failed to obtain source viewer for " + editor.getClass().getName() + ": " + e.getMessage());
-			return null;
-		}
-	}
-
-	/** Returns the installed painter so {@link #unregisterEditor} can detach it. */
-	private AnnotationPainter installAnnotationPainter(ISourceViewer viewer, PeerCursorDrawingStrategy cursorStrat,
-			PeerSelectionDrawingStrategy selStrat) {
-		try {
-			AnnotationPainter painter = new AnnotationPainter(viewer, null);
-			painter.addDrawingStrategy("org.eclipse.oct.cursor", cursorStrat);
-			painter.addAnnotationType(PeerAnnotation.TYPE_CURSOR, "org.eclipse.oct.cursor");
-			painter.addDrawingStrategy("org.eclipse.oct.selection", selStrat);
-			painter.addAnnotationType(PeerAnnotation.TYPE_SELECTION, "org.eclipse.oct.selection");
-			painter.setAnnotationTypeColor(PeerAnnotation.TYPE_CURSOR,
-					viewer.getTextWidget().getDisplay().getSystemColor(SWT.COLOR_BLUE));
-			painter.setAnnotationTypeColor(PeerAnnotation.TYPE_SELECTION,
-					viewer.getTextWidget().getDisplay().getSystemColor(SWT.COLOR_CYAN));
-
-			if (viewer instanceof ITextViewerExtension2 ext2) {
-				ext2.addPainter(painter);
-			}
-			return painter;
-		} catch (Exception e) {
-			LOG.warning("Failed to install AnnotationPainter: " + e.getMessage());
-			return null;
-		}
-	}
 	// ---- Remote updates ----
 
 	/**
@@ -620,14 +353,14 @@ public class EditorManager implements IPartListener2 {
 			return;
 		}
 		UIThread.asyncExec(() -> {
-			EditorState state = findEditorState(octPath);
+			TrackedEditor state = findEditorState(octPath);
 			if (state == null) {
 				return;
 			}
 
-			state.sendUpdates.set(false);
+			state.sendUpdates().set(false);
 			DocumentRewriteSession session = null;
-			IDocument doc = state.document;
+			IDocument doc = state.document();
 			try {
 				if (doc instanceof IDocumentExtension4 ext4) {
 					session = ext4.startRewriteSession(DocumentRewriteSessionType.UNRESTRICTED);
@@ -653,7 +386,7 @@ public class EditorManager implements IPartListener2 {
 				if (session != null && doc instanceof IDocumentExtension4 ext4) {
 					ext4.stopRewriteSession(session);
 				}
-				state.sendUpdates.set(true);
+				state.sendUpdates().set(true);
 			}
 		});
 	}
@@ -664,7 +397,7 @@ public class EditorManager implements IPartListener2 {
 	 * duplicates. A one-character insert at 0 (typing at the start) must still go
 	 * through — {@code "2"} into {@code "1"} is a real edit.
 	 */
-	static boolean isSeedEcho(IDocument doc, int start, int length, String text) {
+	public static boolean isSeedEcho(IDocument doc, int start, int length, String text) {
 		if (length != 0 || start != 0 || text == null || text.length() <= 1) {
 			return false;
 		}
@@ -678,7 +411,7 @@ public class EditorManager implements IPartListener2 {
 	public void updateTextSelection(String octPath, ClientTextSelection[] selections) {
 		UIThread.asyncExec(() -> {
 			// Record each peer's current document (for the Session View "File" column)
-			// and react to follow-mode *before* checking for a local EditorState —
+			// and react to follow-mode *before* checking for a local TrackedEditor —
 			// otherwise both only ever worked for paths we already happened to have
 			// open ourselves, which defeats the point of a presence display and of
 			// following a peer into a file we haven't opened yet. followTo() opens
@@ -697,41 +430,9 @@ public class EditorManager implements IPartListener2 {
 				}
 			}
 
-			EditorState state = findEditorState(octPath);
+			TrackedEditor state = findEditorState(octPath);
 			if (state != null) {
-				IDocument doc = state.document;
-				int docLen = doc.getLength();
-
-				// Build new annotation map, removing old peer annotations
-				List<Annotation> toRemove = new ArrayList<>();
-				state.peerModel.getAnnotationIterator().forEachRemaining(toRemove::add);
-
-				Map<Annotation, Position> toAdd = new HashMap<>();
-				if (selections != null) {
-					for (ClientTextSelection sel : selections) {
-						if (sel.peer == null) {
-							continue;
-						}
-						RGB color = peerColors.getColor(sel.peer);
-						String name = peerNameLookup.apply(sel.peer);
-
-						int caretOffset = Math.min(sel.start, docLen);
-						toAdd.put(new PeerAnnotation(PeerAnnotation.TYPE_CURSOR, sel.peer, name, color, true),
-								new Position(caretOffset, 0));
-
-						if (sel.end != null && sel.end != sel.start) {
-							int start = Math.min(Math.min(sel.start, sel.end), docLen);
-							int end = Math.min(Math.max(sel.start, sel.end), docLen);
-							if (end > start) {
-								toAdd.put(new PeerAnnotation(PeerAnnotation.TYPE_SELECTION, sel.peer, name, color, false),
-										new Position(start, end - start));
-							}
-						}
-					}
-				}
-
-				state.peerModel.replaceAnnotations(toRemove.toArray(new Annotation[0]), toAdd);
-				scheduleHideNameTags(state);
+				annotations.render(state, selections);
 			}
 
 			// A reporting peer's selections just replaced (or, if state was null,
@@ -740,57 +441,14 @@ public class EditorManager implements IPartListener2 {
 			// plan this closes) — so without this sweep, its annotations from a
 			// *previously* open file would linger there forever.
 			if (!reportingPeers.isEmpty()) {
-				for (Map.Entry<String, EditorState> entry : editorStates.entrySet()) {
+				for (Map.Entry<String, TrackedEditor> entry : editorStates.entrySet()) {
 					if (OctPaths.referToSameDocument(entry.getKey(), octPath)) {
 						continue;
 					}
 					for (String peerId : reportingPeers) {
-						removePeerAnnotations(entry.getValue(), peerId);
+						annotations.removePeer(entry.getValue(), peerId);
 					}
 				}
-			}
-		});
-	}
-
-	/**
-	 * Removes every {@link PeerAnnotation} belonging to {@code peerId} from
-	 * {@code state}'s peer annotation model and repaints the widget. Used both
-	 * for a departed peer ({@link #forgetPeer}) and for a peer that switched to a
-	 * different file ({@link #updateTextSelection}) — neither case ever arrives
-	 * over the wire as an explicit empty update (see the class doc on why), so
-	 * cleanup has to be driven locally.
-	 */
-	private void removePeerAnnotations(EditorState state, String peerId) {
-		List<Annotation> toRemove = new ArrayList<>();
-		state.peerModel.getAnnotationIterator().forEachRemaining(annotation -> {
-			if (annotation instanceof PeerAnnotation peer && peerId.equals(peer.getPeerId())) {
-				toRemove.add(annotation);
-			}
-		});
-		if (toRemove.isEmpty()) {
-			return;
-		}
-		state.peerModel.replaceAnnotations(toRemove.toArray(new Annotation[0]), Map.of());
-		ISourceViewer viewer = getSourceViewer(state.editor);
-		if (viewer != null && viewer.getTextWidget() != null && !viewer.getTextWidget().isDisposed()) {
-			viewer.getTextWidget().redraw();
-		}
-	}
-
-	private void scheduleHideNameTags(EditorState state) {
-		int epoch = nameTagEpoch.merge(state, 1, Integer::sum);
-		UIThread.timerExec(NAME_TAG_VISIBLE_MS, () -> {
-			if (disposed.get() || !Integer.valueOf(epoch).equals(nameTagEpoch.get(state))) {
-				return;
-			}
-			state.peerModel.getAnnotationIterator().forEachRemaining(annotation -> {
-				if (annotation instanceof PeerAnnotation peer) {
-					peer.setShowName(false);
-				}
-			});
-			ISourceViewer viewer = getSourceViewer(state.editor);
-			if (viewer != null && viewer.getTextWidget() != null && !viewer.getTextWidget().isDisposed()) {
-				viewer.getTextWidget().redraw();
 			}
 		});
 	}
@@ -818,31 +476,14 @@ public class EditorManager implements IPartListener2 {
 				return;
 			}
 
-			boolean alreadyKnown = findEditorState(path) != null || !seededPaths.add(path);
+			boolean alreadyKnown = findEditorState(path) != null || !seedGate.markSeeded(path);
 
 			if (followGuestSelection) {
 				// Opens the part, which triggers partOpened() -> trackEditor(), which
-				// seeds from the live buffer and removes the seededPaths entry again.
+				// seeds from the live buffer and drops the seeded-path marker again.
 				activateEditor(file);
 			} else if (!alreadyKnown) {
-				seedFromDisk(file, path);
-			}
-		});
-	}
-
-	/**
-	 * Pushes {@code file}'s on-disk content as the shared document seed without
-	 * opening an editor for it. Runs off the UI thread: it does I/O, and
-	 * {@code openDocument} may block on the service-process pipe.
-	 */
-	private void seedFromDisk(IFile file, String path) {
-		CompletableFuture.runAsync(() -> {
-			try {
-				remoteService.openDocument("text", path, readFileContent(file));
-			} catch (Exception e) {
-				LOG.warning("Failed to seed '" + path + "' from disk for a guest: " + e.getMessage());
-				// Let a later open retry rather than leaving the path marked as seeded.
-				seededPaths.remove(path);
+				seedGate.seedFromDisk(file, path);
 			}
 		});
 	}
@@ -884,12 +525,6 @@ public class EditorManager implements IPartListener2 {
 		}
 	}
 
-	private static String readFileContent(IFile file) throws Exception {
-		try (InputStream is = file.getContents()) {
-			return new String(is.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
-		}
-	}
-
 	public boolean isFollowGuestSelection() {
 		return followGuestSelection;
 	}
@@ -914,7 +549,7 @@ public class EditorManager implements IPartListener2 {
 			IEditorPart editor = IDE.openEditor(page, file, resolveEditorId(file), true);
 			if (editor instanceof ITextEditor textEditor) {
 				// Clamp against the just-opened editor's own document rather than
-				// relying on a pre-existing local EditorState (there may be none yet
+				// relying on a pre-existing local TrackedEditor (there may be none yet
 				// if we're following into a file we haven't opened before).
 				IDocument doc = textEditor.getDocumentProvider().getDocument(textEditor.getEditorInput());
 				int clamped = doc != null ? Math.max(0, Math.min(offset, doc.getLength())) : Math.max(0, offset);
@@ -922,7 +557,7 @@ public class EditorManager implements IPartListener2 {
 				// own caret/selection — selectAndReveal() would move *our* cursor
 				// there too, which is surprising and would itself broadcast a new
 				// selection update. ISourceViewer#revealRange only scrolls.
-				ISourceViewer viewer = getSourceViewer(textEditor);
+				ISourceViewer viewer = TrackedEditor.sourceViewerOf(textEditor);
 				if (viewer != null) {
 					viewer.revealRange(clamped, 0);
 				} else {
@@ -978,8 +613,8 @@ public class EditorManager implements IPartListener2 {
 			stopFollowing();
 		}
 		UIThread.asyncExec(() -> {
-			for (EditorState state : editorStates.values()) {
-				removePeerAnnotations(state, peerId);
+			for (TrackedEditor state : editorStates.values()) {
+				annotations.removePeer(state, peerId);
 			}
 		});
 	}
@@ -990,7 +625,7 @@ public class EditorManager implements IPartListener2 {
 
 	/**
 	 * Save an open editor for {@code path} so its dirty state is cleared. Used when
-	 * a peer persists the file (guest→host or host→guest {@code writeFile}).
+	 * a peer persists the file (guest->host or host->guest {@code writeFile}).
 	 * Returns {@code true} if handled by an open editor.
 	 */
 	public boolean saveIfOpen(String path, byte[] content) {
@@ -999,7 +634,7 @@ public class EditorManager implements IPartListener2 {
 		}
 		AtomicBoolean handled = new AtomicBoolean(false);
 		UIThread.syncExec(() -> {
-			EditorState state = findEditorState(path);
+			TrackedEditor state = findEditorState(path);
 			if (state == null) {
 				return;
 			}
@@ -1008,18 +643,18 @@ public class EditorManager implements IPartListener2 {
 			// echo so we don't broadcast the change back to peers.
 			if (content != null) {
 				String incoming = new String(content, StandardCharsets.UTF_8).replace("\r\n", "\n");
-				if (!incoming.equals(state.document.get())) {
-					state.sendUpdates.set(false);
+				if (!incoming.equals(state.document().get())) {
+					state.sendUpdates().set(false);
 					try {
-						state.document.set(incoming);
+						state.document().set(incoming);
 					} finally {
-						state.sendUpdates.set(true);
+						state.sendUpdates().set(true);
 					}
 				}
 			}
 			try {
 				if (isHost) {
-					state.editor.doSave(new NullProgressMonitor());
+					state.editor().doSave(new NullProgressMonitor());
 				} else {
 					acceptRemoteSave(state);
 				}
@@ -1037,17 +672,17 @@ public class EditorManager implements IPartListener2 {
 	 * has changed on the file system" after {@code refreshLocal} updates the oct://
 	 * stamp, and would also echo {@code writeFile} back to the host.
 	 */
-	private void acceptRemoteSave(EditorState state) throws CoreException {
-		IDocumentProvider provider = state.editor.getDocumentProvider();
-		IEditorInput input = state.editor.getEditorInput();
+	private void acceptRemoteSave(TrackedEditor state) throws CoreException {
+		IDocumentProvider provider = state.editor().getDocumentProvider();
+		IEditorInput input = state.editor().getEditorInput();
 		if (provider == null || input == null || !provider.canSaveDocument(input)) {
 			return;
 		}
-		state.sendUpdates.set(false);
+		state.sendUpdates().set(false);
 		try {
 			OctFileStore.suppressWrite(() -> {
 				try {
-					provider.saveDocument(new NullProgressMonitor(), input, state.document, true);
+					provider.saveDocument(new NullProgressMonitor(), input, state.document(), true);
 				} catch (CoreException e) {
 					throw new RuntimeException(e);
 				}
@@ -1058,19 +693,19 @@ public class EditorManager implements IPartListener2 {
 			}
 			throw e;
 		} finally {
-			state.sendUpdates.set(true);
+			state.sendUpdates().set(true);
 		}
 	}
 
-	private EditorState findEditorState(String octPath) {
+	private TrackedEditor findEditorState(String octPath) {
 		if (octPath == null) {
 			return null;
 		}
-		EditorState exact = editorStates.get(OctPaths.normalize(octPath));
+		TrackedEditor exact = editorStates.get(OctPaths.normalize(octPath));
 		if (exact != null) {
 			return exact;
 		}
-		for (Map.Entry<String, EditorState> entry : editorStates.entrySet()) {
+		for (Map.Entry<String, TrackedEditor> entry : editorStates.entrySet()) {
 			if (OctPaths.referToSameDocument(entry.getKey(), octPath)) {
 				return entry.getValue();
 			}
@@ -1080,7 +715,10 @@ public class EditorManager implements IPartListener2 {
 
 	public void dispose() {
 		disposed.set(true);
-		seededPaths.clear();
+		// Synchronously, like disposed above: an already-armed name-tag timer must
+		// see the session as gone when it fires, not only once the block below ran.
+		annotations.dispose();
+		seedGate.dispose();
 		peerDocumentPaths.clear();
 		followingPeerId = null;
 		followGuestSelection = false;
@@ -1098,18 +736,5 @@ public class EditorManager implements IPartListener2 {
 			// annotation models and drawing strategies touches SWT/viewer APIs.
 			new ArrayList<>(editorStates.keySet()).forEach(this::unregisterEditor);
 		});
-	}
-
-	// ---- Inner state holder ----
-
-	private record EditorState(ITextEditor editor, IDocument document, AnnotationModel peerModel,
-			DocumentSyncListener docListener, SelectionSyncListener selListener, AtomicBoolean sendUpdates,
-			PeerCursorDrawingStrategy cursorStrategy, PeerSelectionDrawingStrategy selectionStrategy,
-			/** Non-null when selListener was added as a post-selection listener. */
-			IPostSelectionProvider postSelectionProvider,
-			/** Non-null when selListener was added to the viewer's provider instead. */
-			ISelectionProvider viewerSelectionProvider,
-			/** Non-null unless the viewer was unavailable or the install failed. */
-			AnnotationPainter painter) {
 	}
 }

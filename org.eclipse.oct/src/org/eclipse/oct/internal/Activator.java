@@ -56,7 +56,7 @@ public class Activator extends AbstractUIPlugin {
 		ResourcesPlugin.getWorkspace().addResourceChangeListener(workspaceChangeListener,
 				IResourceChangeEvent.POST_CHANGE);
 
-		// Register project lifecycle listener (close/delete → close session)
+		// Register project lifecycle listener (close/delete -> close session)
 		ResourcesPlugin.getWorkspace().addResourceChangeListener(event ->
 
 		{

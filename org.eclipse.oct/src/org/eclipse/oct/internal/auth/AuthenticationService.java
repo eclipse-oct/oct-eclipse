@@ -68,7 +68,7 @@ public class AuthenticationService {
 		UIThread.asyncExec(() -> {
 			Shell shell = activeShell();
 
-			// No metadata or no providers → open login-page URL
+			// No metadata or no providers -> open login-page URL
 			if (metadata == null || metadata.providers == null || metadata.providers.length == 0) {
 				if (metadata != null && metadata.loginPageUrl != null) {
 					openBrowserDialog(shell, serverUrl, metadata.loginPageUrl);
@@ -79,7 +79,7 @@ public class AuthenticationService {
 			if (metadata.providers.length == 1) {
 				dispatchProvider(shell, serverUrl, token, metadata.providers[0], metadata);
 			} else {
-				// Multiple providers → show chooser dialog (port of JBPopupFactory chooser)
+				// Multiple providers -> show chooser dialog (port of JBPopupFactory chooser)
 				List<String> names = Arrays.stream(metadata.providers).map(p -> p.name != null ? p.name : p.type)
 						.collect(Collectors.toList());
 

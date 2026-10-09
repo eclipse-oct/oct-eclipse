@@ -94,6 +94,15 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
   `internal.*` types from outside their own package tree.
 - Java sources carry the `Copyright (c) <year> TypeFox GmbH and others.` /
   `SPDX-License-Identifier: EPL-2.0` header — copy it from a neighbouring file.
+- This is an open source project: **don't use package-private visibility.**
+  Every top-level type is `public`, and every method called from another class
+  is `public` too — including callers in the *same* package, and including
+  methods a test reaches (tests live in a fragment and may reuse the host's
+  package names, so package-private would technically compile; use `public`
+  anyway). Only members used solely inside their own class stay `private`.
+  The one unavoidable exception is a secondary top-level type sharing a file
+  with another (e.g. `EncryptionMetaData` in `PeerMetaData.java`), which Java
+  forbids from being public — give it its own file if it needs to be.
 - Reaching the UI from the JSON-RPC reader thread, the service process's exit
   callback, or a `Job` goes through `org.eclipse.oct.util.UIThread`;
   `Display.getDefault()` is banned in `org.eclipse.oct` because it *creates* a
