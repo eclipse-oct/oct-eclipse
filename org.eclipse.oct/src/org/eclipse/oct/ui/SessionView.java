@@ -30,6 +30,7 @@ import org.eclipse.oct.util.OctPaths;
 import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Cursor;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.GC;
@@ -60,6 +61,7 @@ public class SessionView extends ViewPart {
 	public static final String ID = "org.eclipse.oct.sessionView";
 
 	private static final int ICON_SIZE = 16;
+	private static final int FILE_COLUMN = 2;
 
 	private Composite root;
 	private Composite emptyPage;
@@ -73,6 +75,7 @@ public class SessionView extends ViewPart {
 	private Image checkboxUncheckedImage;
 	private RGB checkboxColor;
 	private Image fileImage;
+	private Cursor handCursor;
 	private final Map<RGB, Image> colorDots = new HashMap<>();
 
 	private Runnable unsubscribeSessionCreated;
@@ -99,6 +102,7 @@ public class SessionView extends ViewPart {
 				"org.eclipse.oct.logout", CommandContributionItem.STYLE_PUSH)));
 
 		fileImage = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE);
+		handCursor = new Cursor(parent.getDisplay(), SWT.CURSOR_HAND);
 
 		root = new Composite(parent, SWT.NONE);
 		GridLayoutFactory.fillDefaults().applyTo(root);
@@ -229,6 +233,14 @@ public class SessionView extends ViewPart {
 			}
 
 			@Override
+			public Color getForeground(Object element) {
+				if (peerFilePath((Participant) element) == null) {
+					return null;
+				}
+				return table.getDisplay().getSystemColor(SWT.COLOR_LINK_FOREGROUND);
+			}
+
+			@Override
 			public String getToolTipText(Object element) {
 				return peerFilePath((Participant) element);
 			}
@@ -267,12 +279,20 @@ public class SessionView extends ViewPart {
 
 		table.addListener(SWT.MouseDown, e -> {
 			TableItem item = table.getItem(new Point(e.x, e.y));
-			if (item == null || !(item.getData() instanceof Participant p) || !p.canFollow()) {
+			if (item == null || !(item.getData() instanceof Participant p)) {
 				return;
 			}
-			if (item.getBounds(3).contains(e.x, e.y)) {
+			if (item.getBounds(FILE_COLUMN).contains(e.x, e.y)) {
+				openWithEditor(p);
+			} else if (p.canFollow() && item.getBounds(3).contains(e.x, e.y)) {
 				toggleFollow(p);
 			}
+		});
+		table.addListener(SWT.MouseMove, e -> {
+			TableItem item = table.getItem(new Point(e.x, e.y));
+			boolean overFileLink = item != null && item.getData() instanceof Participant p
+					&& peerFilePath(p) != null && item.getBounds(FILE_COLUMN).contains(e.x, e.y);
+			table.setCursor(overFileLink ? handCursor : null);
 		});
 		viewer.addDoubleClickListener(e -> {
 			if (e.getSelection() instanceof IStructuredSelection sel && sel.getFirstElement() instanceof Participant p
@@ -387,6 +407,15 @@ public class SessionView extends ViewPart {
 		CollaborationInstance inst = findActiveInstance(SessionService.getInstance());
 		return inst != null && inst.getEditorManager() != null && p.peer().id != null
 				&& p.peer().id.equals(inst.getEditorManager().getFollowingPeerId());
+	}
+
+	private void openWithEditor(Participant p) {
+		CollaborationInstance inst = findActiveInstance(SessionService.getInstance());
+		String path = peerFilePath(p);
+		if (inst == null || inst.getEditorManager() == null || path == null) {
+			return;
+		}
+		inst.getEditorManager().openWithEditor(path);
 	}
 
 	private static String peerFilePath(Participant p) {
@@ -566,5 +595,8 @@ public class SessionView extends ViewPart {
 			}
 		}
 		colorDots.clear();
+		if (handCursor != null && !handCursor.isDisposed()) {
+			handCursor.dispose();
+		}
 	}
 }

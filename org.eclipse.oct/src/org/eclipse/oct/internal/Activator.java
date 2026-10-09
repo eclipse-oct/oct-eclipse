@@ -96,6 +96,7 @@ public class Activator extends AbstractUIPlugin {
 				} catch (Exception ignored) {
 				}
 			}
+			sessionService.waitForPendingProjectDeletions();
 		}
 
 		SessionService.setInstance(null);

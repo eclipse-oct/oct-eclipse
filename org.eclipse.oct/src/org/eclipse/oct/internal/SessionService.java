@@ -29,6 +29,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
@@ -68,6 +69,9 @@ public class SessionService {
 	private final Map<IProject, ServiceProcess> processes = new HashMap<>();
 	private final Map<IProject, CollaborationInstance> instances = new HashMap<>();
 	private final List<IProject> tempProjectsToDelete = new ArrayList<>();
+
+	/** Job family for {@link #deleteTempProject(IProject)}'s jobs; see {@link #waitForPendingProjectDeletions()}. */
+	private static final Object DELETE_TEMP_PROJECT_JOB_FAMILY = new Object();
 	private final Set<IProject> pendingRoomCreations = new HashSet<>();
 	private final Set<String> pendingRoomJoins = new HashSet<>();
 
@@ -312,10 +316,33 @@ public class SessionService {
 				}
 				return Status.OK_STATUS;
 			}
+
+			@Override
+			public boolean belongsTo(Object family) {
+				return family == DELETE_TEMP_PROJECT_JOB_FAMILY;
+			}
 		};
 		job.setRule(project);
 		job.setUser(false);
 		job.schedule();
+	}
+
+	/**
+	 * Blocks until every {@link #deleteTempProject(IProject)} job scheduled so
+	 * far has finished. {@code closeCurrentSession} deletes temp projects
+	 * asynchronously so interactive "Close Session" calls don't block the UI
+	 * thread, but that means a plain {@code schedule()} races process exit:
+	 * nothing otherwise waits for it, so the bundle can stop — and the JVM can
+	 * exit — before the delete job ever runs, leaking the temp project on
+	 * disk. {@link org.eclipse.oct.internal.Activator#stop} calls this after
+	 * closing all sessions to close that race.
+	 */
+	public void waitForPendingProjectDeletions() {
+		try {
+			Job.getJobManager().join(DELETE_TEMP_PROJECT_JOB_FAMILY, new NullProgressMonitor());
+		} catch (OperationCanceledException | InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	public void projectClosed(IProject project) {

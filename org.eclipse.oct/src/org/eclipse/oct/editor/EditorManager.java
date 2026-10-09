@@ -853,6 +853,19 @@ public class EditorManager implements IPartListener2 {
 		}
 	}
 
+	/**
+	 * Opens an editor for the on-disk file behind a protocol path, e.g. the
+	 * file a peer currently has open as shown in the File column of
+	 * {@link org.eclipse.oct.ui.SessionView}. No-op if the path doesn't
+	 * resolve to an existing local resource.
+	 */
+	public void openWithEditor(String octPath) {
+		IFile file = eclipseFile(octPath);
+		if (file != null) {
+			activateEditor(file);
+		}
+	}
+
 	private static String readFileContent(IFile file) throws Exception {
 		try (InputStream is = file.getContents()) {
 			return new String(is.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
