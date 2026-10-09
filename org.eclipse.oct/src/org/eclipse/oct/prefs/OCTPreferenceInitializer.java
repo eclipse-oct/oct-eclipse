@@ -19,5 +19,6 @@ public class OCTPreferenceInitializer extends AbstractPreferenceInitializer {
 		IPreferenceStore store = new ScopedPreferenceStore(InstanceScope.INSTANCE, "org.eclipse.oct");
 		store.setDefault(OCTSettings.KEY_SERVER_URL, OCTSettings.DEFAULT_SERVER_URL);
 		store.setDefault(OCTSettings.KEY_AUTO_FOLLOW_HOST, OCTSettings.DEFAULT_AUTO_FOLLOW_HOST);
+		store.setDefault(OCTSettings.KEY_IGNORE_PATTERNS, OCTSettings.DEFAULT_IGNORE_PATTERNS);
 	}
 }

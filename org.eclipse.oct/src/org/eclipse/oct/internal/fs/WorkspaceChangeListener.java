@@ -75,6 +75,11 @@ public class WorkspaceChangeListener implements IResourceChangeListener {
 						return true;
 					}
 
+					if (IgnoreMatcher.isIgnored(resource.getName())) {
+						// Never observed; also skips descending into this subtree.
+						return false;
+					}
+
 					String path = OctPaths.fromHostResource(resource);
 
 					List<FileChange> changes = switch (delta.getKind()) {

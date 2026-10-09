@@ -88,6 +88,9 @@ public class WorkspaceFileSystemService implements WorkspaceFileSystemServiceHol
 		Map<String, FileType> result = new HashMap<>();
 		try {
 			for (IResource child : container.members()) {
+				if (IgnoreMatcher.isIgnored(child.getName())) {
+					continue;
+				}
 				result.put(child.getName(), getFileType(child));
 			}
 		} catch (CoreException e) {

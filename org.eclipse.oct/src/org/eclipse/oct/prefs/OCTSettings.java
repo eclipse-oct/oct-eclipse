@@ -22,9 +22,11 @@ public class OCTSettings {
 	private static final String PLUGIN_ID = "org.eclipse.oct";
 	static final String KEY_SERVER_URL = "defaultServerURL";
 	static final String KEY_AUTO_FOLLOW_HOST = "autoFollowHost";
+	static final String KEY_IGNORE_PATTERNS = "ignorePatterns";
 	private static final String KEY_STORED_TOKENS = "storedUserTokens";
 	public static final String DEFAULT_SERVER_URL = "https://api.open-collab.tools/";
 	public static final boolean DEFAULT_AUTO_FOLLOW_HOST = false;
+	public static final String DEFAULT_IGNORE_PATTERNS = "bin,target,.DS_Store,node_modules,.git,.metadata,.settings";
 
 	private static OCTSettings INSTANCE;
 
@@ -99,6 +101,34 @@ public class OCTSettings {
 		} catch (Exception e) {
 			return url.trim();
 		}
+	}
+
+	/**
+	 * Glob patterns (e.g. {@code target}, {@code *.class}) for resources
+	 * excluded from sharing and change observation. An empty list means
+	 * nothing is excluded - it is not re-interpreted as "use the defaults".
+	 */
+	public List<String> getIgnorePatterns() {
+		String raw = getPrefs().get(KEY_IGNORE_PATTERNS, DEFAULT_IGNORE_PATTERNS);
+		if (raw.isBlank()) {
+			return new ArrayList<>();
+		}
+		return new ArrayList<>(Arrays.asList(raw.split(",")));
+	}
+
+	/**
+	 * Notifies on every change of the ignore pattern list, however it was
+	 * changed (the preference page writes the node directly). Returns a
+	 * {@code Runnable} that unregisters the listener.
+	 */
+	public Runnable addIgnorePatternsChangeListener(Consumer<List<String>> listener) {
+		IEclipsePreferences.IPreferenceChangeListener prefListener = event -> {
+			if (KEY_IGNORE_PATTERNS.equals(event.getKey())) {
+				listener.accept(getIgnorePatterns());
+			}
+		};
+		getPrefs().addPreferenceChangeListener(prefListener);
+		return () -> getPrefs().removePreferenceChangeListener(prefListener);
 	}
 
 	public List<String> getStoredUserTokens() {
