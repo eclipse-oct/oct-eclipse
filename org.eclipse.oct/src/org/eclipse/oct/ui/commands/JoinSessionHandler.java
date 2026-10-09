@@ -22,8 +22,7 @@ public class JoinSessionHandler extends OctSessionHandler {
 		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
 
 		InputDialog dialog = new InputDialog(window.getShell(), "Join Collaboration Session",
-				"Enter the room ID or URL:", "",
-				input -> (input == null || input.isBlank()) ? "Room ID cannot be empty" : null);
+				"Enter the room ID or URL:", "", JoinSessionHandler::validateRoomToken);
 
 		if (dialog.open() == Window.OK) {
 			String roomToken = dialog.getValue().trim();
@@ -35,5 +34,24 @@ public class JoinSessionHandler extends OctSessionHandler {
 	@Override
 	protected boolean computeEnabled() {
 		return SessionService.getInstance() != null && !hasOpenSession();
+	}
+
+	/**
+	 * A share URL is expected to carry {@code ://}; a bare room ID is a single
+	 * token. Anything else with a slash in it (e.g. a filesystem path pasted
+	 * by mistake) isn't either, and would otherwise be sent verbatim as the
+	 * {@code room/joinRoom} path segment — a leading slash doubles up with the
+	 * route's own, producing a 404 whose raw HTML body then surfaces in the
+	 * error dialog.
+	 */
+	private static String validateRoomToken(String input) {
+		if (input == null || input.isBlank()) {
+			return "Room ID cannot be empty";
+		}
+		String trimmed = input.trim();
+		if (!trimmed.contains("://") && trimmed.contains("/")) {
+			return "That doesn't look like a room ID or URL";
+		}
+		return null;
 	}
 }

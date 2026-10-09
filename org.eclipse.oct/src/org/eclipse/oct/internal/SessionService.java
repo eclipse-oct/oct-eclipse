@@ -19,6 +19,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
@@ -65,6 +67,8 @@ public class SessionService {
 	 * credentials into a browser never trips it, short enough that a wedged
 	 * {@code oct-service-process} cannot pin a job forever. */
 	private static final long AWAIT_SESSION_SAFETY_BOUND_MS = TimeUnit.MINUTES.toMillis(5);
+
+	private static final Pattern HTML_PRE_TAG = Pattern.compile("<pre>(.*?)</pre>", Pattern.DOTALL);
 
 	private final Map<IProject, ServiceProcess> processes = new HashMap<>();
 	private final Map<IProject, CollaborationInstance> instances = new HashMap<>();
@@ -453,9 +457,26 @@ public class SessionService {
 					|| msg.contains("ENOTFOUND") || msg.contains("EAI_AGAIN"))) {
 				return "Server " + serverUrl + " is not reachable.";
 			}
+			if (msg != null && (msg.contains("<!DOCTYPE html") || msg.contains("<html"))) {
+				return describeHtmlErrorPage(msg);
+			}
 			cause = cause.getCause();
 		}
 		return e.getMessage() == null ? "" : ("Error: " + e.getMessage());
+	}
+
+	/**
+	 * The OCT server's HTTP layer (Express) reports failed requests — e.g. a
+	 * malformed room ID that doesn't match any route — as a full HTML error
+	 * page, not a JSON-RPC error. That page's markup isn't useful to a user
+	 * and would otherwise be dumped verbatim into the error dialog, so pull
+	 * out just the {@code <pre>} summary Express puts the actual reason in.
+	 */
+	private static String describeHtmlErrorPage(String html) {
+		Matcher m = HTML_PRE_TAG.matcher(html);
+		String summary = m.find() ? m.group(1).strip() : null;
+		return summary == null || summary.isBlank() ? "The server rejected the request."
+				: "The server rejected the request: " + summary;
 	}
 
 	/**
