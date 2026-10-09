@@ -54,14 +54,17 @@ import org.eclipse.oct.util.OctPaths;
 import org.eclipse.oct.util.UIThread;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.RGB;
+import org.eclipse.ui.IEditorDescriptor;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
+import org.eclipse.ui.IEditorRegistry;
 import org.eclipse.ui.IPartListener2;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.editors.text.EditorsUI;
 import org.eclipse.ui.ide.IDE;
 import org.eclipse.ui.texteditor.AbstractTextEditor;
 import org.eclipse.ui.texteditor.IDocumentProvider;
@@ -847,10 +850,25 @@ public class EditorManager implements IPartListener2 {
 	private void activateEditor(IFile file) {
 		try {
 			IWorkbenchPage page = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getActivePage();
-			IDE.openEditor(page, file, true);
+			IDE.openEditor(page, file, resolveEditorId(file), true);
 		} catch (Exception e) {
 			LOG.warning("Failed to open editor for guest: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * {@code oct://} files only exist in the shared session, not on the
+	 * guest's real filesystem, so an extension with no registered Eclipse
+	 * editor must not fall through to the registry's external/system-editor
+	 * default - that editor couldn't resolve the file at all.
+	 */
+	private static String resolveEditorId(IFile file) {
+		IEditorRegistry registry = PlatformUI.getWorkbench().getEditorRegistry();
+		IEditorDescriptor descriptor = registry.getDefaultEditor(file.getName());
+		if (descriptor == null || !descriptor.isInternal()) {
+			return EditorsUI.DEFAULT_TEXT_EDITOR_ID;
+		}
+		return descriptor.getId();
 	}
 
 	/**
@@ -893,7 +911,7 @@ public class EditorManager implements IPartListener2 {
 			// activate=true: bring the tab to the front (and (re)open it if the
 			// user had closed it) instead of just updating a background editor —
 			// otherwise the follower never actually sees the tab switch.
-			IEditorPart editor = IDE.openEditor(page, file, true);
+			IEditorPart editor = IDE.openEditor(page, file, resolveEditorId(file), true);
 			if (editor instanceof ITextEditor textEditor) {
 				// Clamp against the just-opened editor's own document rather than
 				// relying on a pre-existing local EditorState (there may be none yet
