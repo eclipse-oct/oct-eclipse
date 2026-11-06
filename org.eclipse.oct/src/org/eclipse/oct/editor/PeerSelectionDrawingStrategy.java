@@ -48,14 +48,14 @@ public class PeerSelectionDrawingStrategy implements IDrawingStrategy {
 					// Single line
 					gc.fillRectangle(start.x, start.y, end.x - start.x, lineHeight);
 				} else {
-					// First line: start.x → right edge
+					// First line: start.x -> right edge
 					int width = textWidget.getClientArea().width;
 					gc.fillRectangle(start.x, start.y, width - start.x, lineHeight);
 					// Middle lines (if any)
 					for (int y = start.y + lineHeight; y < end.y; y += lineHeight) {
 						gc.fillRectangle(0, y, width, lineHeight);
 					}
-					// Last line: 0 → end.x
+					// Last line: 0 -> end.x
 					gc.fillRectangle(0, end.y, end.x, lineHeight);
 				}
 			} catch (IllegalArgumentException ignored) {

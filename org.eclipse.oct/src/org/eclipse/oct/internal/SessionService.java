@@ -19,6 +19,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
@@ -29,6 +31,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
@@ -65,9 +68,14 @@ public class SessionService {
 	 * {@code oct-service-process} cannot pin a job forever. */
 	private static final long AWAIT_SESSION_SAFETY_BOUND_MS = TimeUnit.MINUTES.toMillis(5);
 
+	private static final Pattern HTML_PRE_TAG = Pattern.compile("<pre>(.*?)</pre>", Pattern.DOTALL);
+
 	private final Map<IProject, ServiceProcess> processes = new HashMap<>();
 	private final Map<IProject, CollaborationInstance> instances = new HashMap<>();
 	private final List<IProject> tempProjectsToDelete = new ArrayList<>();
+
+	/** Job family for {@link #deleteTempProject(IProject)}'s jobs; see {@link #waitForPendingProjectDeletions()}. */
+	private static final Object DELETE_TEMP_PROJECT_JOB_FAMILY = new Object();
 	private final Set<IProject> pendingRoomCreations = new HashSet<>();
 	private final Set<String> pendingRoomJoins = new HashSet<>();
 
@@ -312,10 +320,33 @@ public class SessionService {
 				}
 				return Status.OK_STATUS;
 			}
+
+			@Override
+			public boolean belongsTo(Object family) {
+				return family == DELETE_TEMP_PROJECT_JOB_FAMILY;
+			}
 		};
 		job.setRule(project);
 		job.setUser(false);
 		job.schedule();
+	}
+
+	/**
+	 * Blocks until every {@link #deleteTempProject(IProject)} job scheduled so
+	 * far has finished. {@code closeCurrentSession} deletes temp projects
+	 * asynchronously so interactive "Close Session" calls don't block the UI
+	 * thread, but that means a plain {@code schedule()} races process exit:
+	 * nothing otherwise waits for it, so the bundle can stop — and the JVM can
+	 * exit — before the delete job ever runs, leaking the temp project on
+	 * disk. {@link org.eclipse.oct.internal.Activator#stop} calls this after
+	 * closing all sessions to close that race.
+	 */
+	public void waitForPendingProjectDeletions() {
+		try {
+			Job.getJobManager().join(DELETE_TEMP_PROJECT_JOB_FAMILY, new NullProgressMonitor());
+		} catch (OperationCanceledException | InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	public void projectClosed(IProject project) {
@@ -426,9 +457,26 @@ public class SessionService {
 					|| msg.contains("ENOTFOUND") || msg.contains("EAI_AGAIN"))) {
 				return "Server " + serverUrl + " is not reachable.";
 			}
+			if (msg != null && (msg.contains("<!DOCTYPE html") || msg.contains("<html"))) {
+				return describeHtmlErrorPage(msg);
+			}
 			cause = cause.getCause();
 		}
 		return e.getMessage() == null ? "" : ("Error: " + e.getMessage());
+	}
+
+	/**
+	 * The OCT server's HTTP layer (Express) reports failed requests — e.g. a
+	 * malformed room ID that doesn't match any route — as a full HTML error
+	 * page, not a JSON-RPC error. That page's markup isn't useful to a user
+	 * and would otherwise be dumped verbatim into the error dialog, so pull
+	 * out just the {@code <pre>} summary Express puts the actual reason in.
+	 */
+	private static String describeHtmlErrorPage(String html) {
+		Matcher m = HTML_PRE_TAG.matcher(html);
+		String summary = m.find() ? m.group(1).strip() : null;
+		return summary == null || summary.isBlank() ? "The server rejected the request."
+				: "The server rejected the request: " + summary;
 	}
 
 	/**

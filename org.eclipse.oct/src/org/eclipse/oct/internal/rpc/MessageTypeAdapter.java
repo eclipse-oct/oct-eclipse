@@ -17,7 +17,7 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
 /**
- * Fixes the Gson List→nested-array serialization bug in LSP4J.
+ * Fixes the Gson List->nested-array serialization bug in LSP4J.
  *
  *
  * LSP4J/Gson wraps List params as [[p1,p2]] instead of [p1,p2]. This adapter

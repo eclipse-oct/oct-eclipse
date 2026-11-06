@@ -75,6 +75,11 @@ public class WorkspaceChangeListener implements IResourceChangeListener {
 						return true;
 					}
 
+					if (IgnoreMatcher.isIgnored(resource.getName())) {
+						// Never observed; also skips descending into this subtree.
+						return false;
+					}
+
 					String path = OctPaths.fromHostResource(resource);
 
 					List<FileChange> changes = switch (delta.getKind()) {
@@ -86,7 +91,7 @@ public class WorkspaceChangeListener implements IResourceChangeListener {
 							yield List.of(new FileChange(FileChangeEventType.Delete, oldPath),
 									new FileChange(FileChangeEventType.Create, path));
 						} else if ((delta.getFlags() & IResourceDelta.CONTENT) != 0) {
-							// Host save — same as VS Code watcher.onDidChange → Update.
+							// Host save — same as VS Code watcher.onDidChange -> Update.
 							if (resource instanceof IFile file) {
 								savedFiles.computeIfAbsent(project, k -> new ArrayList<>()).add(file);
 							}

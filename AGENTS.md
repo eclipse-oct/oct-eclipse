@@ -94,6 +94,22 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
   `internal.*` types from outside their own package tree.
 - Java sources carry the `Copyright (c) <year> TypeFox GmbH and others.` /
   `SPDX-License-Identifier: EPL-2.0` header — copy it from a neighbouring file.
+- This is an open source project: **don't use package-private visibility.**
+  Every top-level type is `public`, and every method called from another class
+  is `public` too — including callers in the *same* package, and including
+  methods a test reaches (tests live in a fragment and may reuse the host's
+  package names, so package-private would technically compile; use `public`
+  anyway). Only members used solely inside their own class stay `private`.
+  The one unavoidable exception is a secondary top-level type sharing a file
+  with another (e.g. `EncryptionMetaData` in `PeerMetaData.java`), which Java
+  forbids from being public — give it its own file if it needs to be.
+- Reaching the UI from the JSON-RPC reader thread, the service process's exit
+  callback, or a `Job` goes through `org.eclipse.oct.util.UIThread`;
+  `Display.getDefault()` is banned in `org.eclipse.oct` because it *creates* a
+  display on the calling thread instead of returning null — a review-time
+  convention, not a mechanically enforced one. State shared with those threads
+  is `volatile` or a concurrent collection — see
+  [ADR-0003](docs/adr/0003-ui-thread-dispatch.md).
 
 ## Boundaries and definition of done
 
@@ -103,10 +119,6 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
   logging decrypted payloads anywhere the relay server could read them) — see
   [ADR-0001](docs/adr/0001-native-service-process-bridge.md).
 - Done means `mvn clean verify` passes locally, with output shown.
-- Any change under `editor/`, `internal/fs/`, or `internal/rpc/` updates
-  [org.eclipse.oct/docs/sync-and-save-lifecycle.md](org.eclipse.oct/docs/sync-and-save-lifecycle.md)
-  in the same change — its "Resolved" section also records fixes that touch no
-  message at all, such as cross-thread publication and process-lifecycle races.
 - If reality contradicts this file or `docs/`, fix the doc in the same change
   — never work around it silently.
 
@@ -117,11 +129,13 @@ mvn -pl org.eclipse.oct.tests -am -Dtycho.mode=maven integration-test -Dtest=<Cl
 - [docs/adr/](docs/adr/) — do not contradict accepted ADRs: ADR-0001 (native
   service-process bridge instead of a Java protocol reimplementation),
   ADR-0002 (gate outgoing edits on seed confirmation, with a timeout
-  fallback).
+  fallback), ADR-0003 (all UI dispatch through `UIThread`, explicit
+  cross-thread publication).
 - [docs/exec-plans/](docs/exec-plans/active/) — multi-session work; move to
   `completed/` when done.
 - [org.eclipse.oct/docs/sync-and-save-lifecycle.md](org.eclipse.oct/docs/sync-and-save-lifecycle.md)
-  — editor/file sync trigger→RPC→handler tables, save-path behavior, known
-  upstream gaps.
+  — editor/file sync trigger→RPC→handler tables, save-path behavior.
+- [docs/BACKLOG.md](docs/BACKLOG.md) — known minor issues not actively being
+  worked on.
 - [README.md](README.md) — human-facing PDE import / "Run As Eclipse
   Application" / update-site install instructions.

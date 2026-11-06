@@ -9,6 +9,8 @@ The actual collaboration protocol, relay server, and VS Code client live in the
 [open-collaboration-tools](https://github.com/eclipse-oct/open-collaboration-tools)
 repository; this repo only adds the Eclipse side.
 
+## Features/Highlights
+
 ## Installing the plugin
 
 This project doesn't have a public p2 update site or Eclipse Marketplace listing

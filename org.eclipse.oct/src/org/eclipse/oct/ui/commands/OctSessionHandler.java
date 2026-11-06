@@ -16,7 +16,7 @@ import org.eclipse.swt.widgets.Display;
  * Re-evaluates command enablement when a session starts or ends so toolbar
  * icons (Host / Join / Close / …) update immediately.
  */
-abstract class OctSessionHandler extends AbstractHandler {
+public abstract class OctSessionHandler extends AbstractHandler {
 
 	private final List<Runnable> unsubs = new ArrayList<>();
 	private boolean hooked;

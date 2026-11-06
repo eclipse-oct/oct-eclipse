@@ -19,12 +19,12 @@ import org.eclipse.swt.widgets.Link;
 /**
  * Centered empty-state copy and host/join links.
  */
-final class EmptySessionPanel extends Composite {
+public final class EmptySessionPanel extends Composite {
 
 	private Font titleFont;
 	private Runnable unsubscribeServerUrl;
 
-	EmptySessionPanel(Composite parent, Consumer<String> runCommand) {
+	public EmptySessionPanel(Composite parent, Consumer<String> runCommand) {
 		super(parent, SWT.NONE);
 		GridLayoutFactory.fillDefaults().spacing(0, 10).applyTo(this);
 		setBackgroundMode(SWT.INHERIT_DEFAULT);
